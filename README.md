@@ -11,11 +11,12 @@ reproduce the data shown in the figures of the main text.
 Structure
 ---------
 
-There are 4 directories in this repo
+There are 5 directories in this repo
   * paper : contains the pdf of the accompanying paper plus the data used to generate the figures in the paper.
   * src : the source code of the worm algorithm
   * parameter_files : examples of parameter files for Bose-Hubbard and spin-XXZ models. 
   * test_mpi : parameter files to test the code against ground state Lanczos results for small system sizes.
+  * tools : simple helper python scripts to extract information from the output hdf5 files
     
 
 Requirements
