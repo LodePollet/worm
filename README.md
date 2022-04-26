@@ -12,10 +12,10 @@ Structure
 ---------
 
 There are 5 directories in this repo
-  * paper : contains the pdf of the accompanying paper plus the data used to generate the figures in the paper.
+  * paper : contains the pdf of the accompanying paper plus the data used to generate the figures in the paper
   * src : the source code of the worm algorithm
-  * parameter_files : examples of parameter files for Bose-Hubbard and spin-XXZ models. 
-  * test_mpi : parameter files to test the code against ground state Lanczos results for small system sizes.
+  * parameter_files : examples of parameter files for Bose-Hubbard and spin-XXZ models
+  * test_mpi : parameter files to test the code against ground state Lanczos results for small system sizes
   * tools : simple helper python scripts to extract information from the output hdf5 files
     
 
@@ -28,9 +28,9 @@ instructions. At the time of this writing, ALPSCore imposed the following system
 requirements:
 
   * C++ compiler, along with suitable MPI wrappers (e.g. OpenMPI)
-  * CMake build system (version 3.1 or later),
-  * Boost headers and `program_options` library (version 1.56 or later),
-  * HDF5 library version 1.8.x (version 1.10 does _not_ work, see below).
+  * CMake build system (version 3.1 or later)
+  * Boost (version 1.56 or later)
+  * HDF5 library 1.8.x (version 1.10 has a known problem)
   
 Beyond these, our codes require
 
@@ -79,7 +79,7 @@ analogous to ALPSCore's, e.g.:
 
     $ mkdir build && cd build
     $ cmake ../src
-    $ make -jN all
+    $ make -jN
 
 Again, provide `-DCMAKE_PREFIX_PATH=/path/to/alpscore/install` if ALPSCore has
 been installed in a non-standard location. Refer to the READMEs in the
@@ -116,7 +116,7 @@ the results are written to `job.out.h5`.
 #### Using MPI parallelization
 
 To run the simulation on multiple cores or even nodes, use the executable
-without the `_single` suffix in combination with the MPI wrapper script:
+with the `_mpi` suffix in combination with the MPI wrapper script:
 
     $ mpiexec -n $NUM_MPI ./qmc_worm_mpi job.ini
     
@@ -130,12 +130,7 @@ be written which contains the collected results from all MPI processes.
 
 Periodically, the total number of measurements among all the processes will be
 accumulated. If it exceeds the value specified in the `sweeps` parameter (or the
-`timelimit` is reached), the simulation will terminate. Since this check
-requires synchronization of the processes, it is not done after each sweep but
-rather at intervals between `Tmin` and `Tmax` seconds (which may be specified in
-the parameters file). Thus, when working on a cluster with wallclock
-constraints, one should reserve at least `timelimit+Tmax` seconds to avoid
-premature forceful termination of the job.
+`timelimit` is reached), the simulation will terminate.
 
 Keep in mind that the thermalization phase has to be done for each MPI process
 independently, i.e. `$NUM_MPI` × `thermalization` sweeps will be carried out in
@@ -184,7 +179,7 @@ automatically:
     
 However, `$NUM_MPI` needs to match the amount used in the previous run.
 
-When resuming, the `timelimit` is basically reset. ~~In case the simulation
+When resuming, the `timelimit` is basically reset. In case the simulation
 terminated because it had taken `sweeps` measurements but the results turned out
 unsatisfactory, one can override the `sweeps` parameter on the command line to
 sample further:
