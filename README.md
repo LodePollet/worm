@@ -232,4 +232,4 @@ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License for more details.
 
 A copy of the GNU General Public License is available in the
-file [LICENSE.txt](LICENSE.txt).
+file [LICENSE.txt](LICENSE).
