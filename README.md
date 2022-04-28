@@ -2,7 +2,7 @@ Efficient and scalable Path Integral Monte Carlo Simulations with worm-type upda
 ===================================================================================================================
 
 This is an open source implementation of the worm algorithm for sign-positive models 
-as explained in our preprint [arXiv:2204.XXX](https://arxiv.org/abs/12204.XXX).
+as explained in our preprint [arXiv:2204.12262](https://arxiv.org/abs/2204.12262).
 Please refer to the main text for an in-depth discussion of the method,
 particularly the algorithm and the updates.
 This README focuses on the technical details in order to run the codes and
