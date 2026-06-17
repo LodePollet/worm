@@ -87,6 +87,8 @@ worm::worm(parameters_type const & parameters, std::size_t seed_offset) : alps::
   int bin_digits = 0;
   for (; beta_int > 0; beta_int >>= 1) bin_digits++;
   dtol = pow(2,-DBL_MANT_DIG+bin_digits);
+  //dtol = 1e-14;
+  std::cout << "# dtol : " << dtol << "\n";
 
   initialize_update_prob();
 
@@ -208,6 +210,8 @@ worm::worm(parameters_type const & parameters, std::size_t seed_offset) : alps::
   C_NBW = C_worm / (Nsites * beta);
   operator_string.resize(Nsites + 1);
   dummy_it.resize(Nsites + 1);
+  worm_tail_it = operator_string[0].end();
+  worm_head_it = operator_string[0].end();
 
   state.resize(Nsites);
   av_dns.resize(Nsites);
@@ -411,8 +415,9 @@ void worm::measure() {
   }
 
   if (counter[counter_tag::WRITE] >= Nsave) {
-    alps::hdf5::archive ar(parameters["outputfile"].as<std::string>(), "w");
-    ar["samples/operator_string_" + to_string(counter[counter_tag::SAMPLE_NUM]++)] << serialize_op_string();
+    //alps::hdf5::archive ar(parameters["outputfile"].as<std::string>(), "w");
+    //ar["samples/operator_string_" + to_string(counter[counter_tag::SAMPLE_NUM]++)] << serialize_op_string();
+    save(parameters["checkpoint"]);
     counter[counter_tag::WRITE] = 0;
   }
 }
@@ -577,10 +582,11 @@ void worm::test_conf() {
         bool b = false;
         bool b2 = false;
         for (size_t const& j : zc[i]) {
-          if ( b && abs(it->time() - it->get_assoc(j)->time() ) < 1e-16 && it->get_assoc(j)->color() == 1 ) b2 = true;
-          if (abs(it->time() - it->get_assoc(j)->time() ) < 1e-16 && it->get_assoc(j)->color() == 1) b = true;
+          if ( b && abs(it->time() - it->get_assoc(j)->time() ) < dtol && it->get_assoc(j)->color() == 1 ) b2 = true;
+          if (abs(it->time() - it->get_assoc(j)->time() ) < dtol && it->get_assoc(j)->color() == 1) b = true;
           if ( (it->link() == nb[i][j] ) && (it->get_assoc(j)->link() == i) && (it->get_assoc(j)->time() != it->time())) {
             cerr << "\n# TEST_CONF : site is linked and has different association time; site " << i <<  " link " << it->link() << " at time " << it->time() << " and " <<  it->get_assoc(j)->time() << endl;
+            print_conf(std::cout);
             throw exception();
           }
         }
@@ -591,6 +597,18 @@ void worm::test_conf() {
         if (!b) {
           cerr << "\n# TEST_CONF : error in configuration, found no link at same time on site " << i << " for time " << it->time() << "\t links : " << it->get_assoc(0)->time() << "\t" << it->get_assoc(0)->color()  << "\t" <<  it->get_assoc(1)->time() << "\t" << it->get_assoc(1)->color() << endl;
           throw exception();
+        }
+        for (size_t const& j : zc[i]) {
+          if (it->get_assoc(j)->time() < 0) {
+            cerr << "\n# TEST_CONF : error with link time which is negative : on site " << i<< " link : " << j << "\t times : " << it->get_assoc(j)->time() << "\n";
+            throw exception();
+          }
+          for (size_t const& k : zc[i]) {
+            if ( (k > j) &&  (it->get_assoc(j)->color() > 0) && (it->get_assoc(k)->color() > 0) && (!is_not_close(it->get_assoc(j)->time(), it->get_assoc(k)->time(),dtol*2))) {
+              cerr << "#\n# TEST_CONF : error in chronology, two interactions at exactly the same time on site " << i<< " links : " << j << " " << k << "\t times : " << it->get_assoc(j)->time() << "\t" << it->get_assoc(k)->time() << "\n";
+              throw exception();
+            }
+          }
         }
       }
       if (it->color() != 0) {         // extensive check on associations
@@ -632,7 +650,7 @@ void worm::test_conf() {
     Diagram_type::iterator itp = worm_head_it;
     if (itp == operator_string[worm_head_it->link()].begin()) itp = operator_string[worm_head_it->link()].end();
     --itp;
-    if ( ! ( (itp->time() == worm_head_it->time()) || ( abs(itp->time()-beta + worm_head_it->time()) < 1e-10 ) ) )  {
+    if ( ! ( (itp->time() == worm_head_it->time()) || ( fabs(itp->time()-beta + worm_head_it->time()) < 10*dtol ) ) )  {
       cerr << "\n# TEST_CONF : worm_at_stop == +1 but times are unequal times : " << worm_head_it->time()  << "\t" << itp->time() << "\t site : " << worm_head_it->link() << endl;
       throw exception();
     }
@@ -644,6 +662,14 @@ void worm::test_conf() {
     if (itn->time() != worm_head_it->time()) {
       cerr << "\n# TEST_CONF : worm_at_stop == -1 but times are unequal times : " << worm_head_it->time()  << "\t" << itn->time() << "\t site : " << worm_head_it->link() << endl;
       throw exception();
+    }
+  }
+  if ( worm_at_stop == 0 && !worm_diag &&!worm_meas_densmat) {
+    for (size_t const& j : zc[worm_head_it->link()]) {
+      if (!is_not_close(worm_head_it->time(), worm_head_it->get_assoc(j)->time(), tol)) {
+        cerr << "\n# TEST_CONF : flag worm_at_stop is set to 0 but should not have been set to 0 : " << worm_head_it->link() << " " << worm_head_it->time() << " " << j << worm_head_it->get_assoc(j)->time() << "\n";
+        throw exception();
+      }
     }
   }
   if (worm_passes_nb_kink) {

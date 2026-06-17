@@ -15,6 +15,8 @@ public:
 
   model(alps::params const& params) {
     model_name = params["model"].as<std::string>();
+    nmin = 0;
+    nmax = 100;
   };
 
   virtual ~model() {}
@@ -139,10 +141,18 @@ public:
 
 #ifndef UNISYS
   void user_set_params(const std::vector<double>& p, const std::vector<std::size_t>& dims) override {
-    std::copy(p.begin(), p.begin() + dims[0], std::back_inserter(t_hop));
-    std::copy(p.begin() + dims[0], p.begin() + dims[0] + dims[1], std::back_inserter(U_on));
-    std::copy(p.begin() + dims[0] + dims[1], p.begin() + dims[0] + dims[1] + dims[2], std::back_inserter(mu));
-    std::copy(p.begin() + dims[0] + dims[1] + dims[2], p.end(), std::back_inserter(V_nn));
+    if (dims.size() != 4) throw std::invalid_argument("Expected 4 dimensions");
+    size_t total = std::accumulate(dims.begin(), dims.end(), 0);
+    if (total != p.size()) throw std::invalid_argument("Dimension mismatch");
+    
+    t_hop.assign(p.begin(), p.begin() + dims[0]);
+    U_on.assign(p.begin() + dims[0], p.begin() + dims[0] + dims[1]);
+    mu.assign(p.begin() + dims[0] + dims[1], p.begin() + dims[0] + dims[1] + dims[2]);
+    V_nn.assign(p.begin() + dims[0] + dims[1] + dims[2], p.end());
+    //std::copy(p.begin(), p.begin() + dims[0], std::back_inserter(t_hop));
+    //std::copy(p.begin() + dims[0], p.begin() + dims[0] + dims[1], std::back_inserter(U_on));
+    //std::copy(p.begin() + dims[0] + dims[1], p.begin() + dims[0] + dims[1] + dims[2], std::back_inserter(mu));
+    //std::copy(p.begin() + dims[0] + dims[1] + dims[2], p.end(), std::back_inserter(V_nn));
   }
 #endif
   
@@ -189,14 +199,14 @@ public:
   XXZ(alps::params const& params) 
     : model(params)
 #ifdef UNISYS
-    ,  Jpm(params["Jpm"])
-    ,  Jzz(params["Jzz"])
-    ,  h(params["h"])
+    ,  Jpm(params["Jpm"].as<double>())
+    ,  Jzz(params["Jzz"].as<double>())
+    ,  h(params["h"].as<double>())
 #endif
   {
     nmin = 0;
     nmax = params["nmax"].as<StateType>();
-    Sspin = nmax/2.;
+    Sspin = nmax/2.0;
   }
 
   static void define_custom_model_parameters(alps::params & params) {
@@ -239,19 +249,22 @@ public:
   double bond_weight_offdiag(const BondIndex b, const StateType n1, const StateType n2, 
                              const StateType m1, const StateType m2) const override {
     if (range_fail(n1) || range_fail(n2) || range_fail(m1) || range_fail(m2))  return 0;
+    double sq1 = sqrt(Sspin * (Sspin+1.) - stateval(n1)*stateval(n2));
+    double sq2 = sqrt(Sspin * (Sspin+1.) - stateval(m1)*stateval(m2)); 
+
 #ifdef UNISYS
     if (n2 == n1 + 1 && m1 == m2 + 1) {
-        return 0.5 * Jpm * sqrt(Sspin * (Sspin+1.) - stateval(n1)*stateval(n2)) * sqrt(Sspin * (Sspin+1.) - stateval(m1)*stateval(m2));
+        return 0.5 * Jpm * sq1 * sq2;
     }
     else if (n1 == n2 + 1 && m2 == m1 + 1) {
-        return 0.5 * Jpm * sqrt(Sspin * (Sspin+1.) - stateval(n1)*stateval(n2)) * sqrt(Sspin * (Sspin+1.) - stateval(m1)*stateval(m2));
+        return 0.5 * Jpm * sq1 * sq2;
     }
 #else
     if (n2 == n1 + 1 && m1 == m2 + 1) {
-        return 0.5 * Jpm[b] * sqrt(Sspin * (Sspin+1.) - stateval(n1)*stateval(n2)) * sqrt(Sspin * (Sspin+1.) - stateval(m1)*stateval(m2));
+        return 0.5 * Jpm[b] * sq1 * sq2;
     }
     else if (n1 == n2 + 1 && m2 == m1 + 1) {
-        return 0.5 * Jpm[b] * sqrt(Sspin * (Sspin+1.) - stateval(n1)*stateval(n2)) * sqrt(Sspin * (Sspin+1.) - stateval(m1)*stateval(m2));
+        return 0.5 * Jpm[b] * sq1 * sq2;
     }
 #endif
     return 0;

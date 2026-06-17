@@ -1,5 +1,3 @@
-/* $Id: worm.hpp,v 1.1 2006/09/09 9:21:44 pollet Exp $ */
-
 #ifndef worm_Element_HPP
 #define worm_Element_HPP
 
@@ -149,7 +147,7 @@ class Element
         return time() < rhs.time();
       }
     } 
-  Element& operator=(const Element rhs) {
+  Element& operator=(const Element& rhs) {
     if (this == &rhs) return (*this);
     mTime = rhs.mTime;
     mBefore = rhs.mBefore;
@@ -203,7 +201,7 @@ class Element
   }
 
 
-  Diagram_type::iterator& get_assoc(SiteIndex s) { return mAssoc[s];}
+  Diagram_type::iterator get_assoc(SiteIndex s) { return mAssoc[s];}
   double get_assoc_time(SiteIndex s) const {return mAssoc[s]->time();}
   void set_assoc(const SiteIndex j, const Diagram_type::iterator v) {
     mAssoc[j] = v;

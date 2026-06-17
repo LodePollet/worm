@@ -1,5 +1,3 @@
-/* $Id: worm.hpp,v 1.1 2006/09/09 8:59:59 pollet Exp $ */
-
 #ifndef worm_HPP
 #define worm_HPP
 
@@ -11,7 +9,6 @@
 #include "model.hpp"
 #include <alps/mc/mcbase.hpp>
 #include <alps/hdf5/archive.hpp>
-#include <alps/hdf5/vector.hpp>
 #include <alps/hdf5/vector.hpp>
 #include <alps/hdf5/multi_array.hpp>
 #include <alps/accumulators.hpp>

@@ -1,4 +1,3 @@
-
 #pragma once
 #include <iostream>
 #include <utility>
@@ -348,6 +347,7 @@ public:
     tree& operator=(tree&& t) noexcept {
 	clear();
 	std::swap(root, t.root);
+        return *this;
     }
 
     bool operator==(const tree& t) const {
@@ -697,15 +697,25 @@ public:
 	}
 	return end();
     }
-
+    
     void remove(const_reference t) {
-	iterator it = find(t);
-	if (it == end())
-	    return;
-	do {
-	    it = erase(it);
-	} while(*it == t);
+      iterator it = find(t);
+      if (it != end()) {
+        const_reference val = *it;
+        while (it != end() && *it == val) {
+            it = erase(it);
+        }
+      }
     }
+
+    //void remove(const_reference t) {
+    //	iterator it = find(t);
+    //	if (it == end())
+    //	    return;
+    //	do {
+    //	    it = erase(it);
+    //	} while(*it == t);
+    //}
 
     void clear() noexcept {
 	clear_node(root);
@@ -837,5 +847,10 @@ std::ostream& operator<<(std::ostream& os, const tree<T,A>& t) {
     return os;
 }
 #endif
+
+template <typename T, typename A>
+typename tree<T,A>::size_type tree<T,A>::max_size() {
+    return std::numeric_limits<size_type>::max();
+}
 
 }

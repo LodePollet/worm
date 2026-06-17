@@ -112,8 +112,9 @@ void worm::load(alps::hdf5::archive & ar) {
                        double findTime) -> Diagram_type::iterator
   {
     for(auto it = begin; it != end; ++it) {
-        if (it->time() == findTime)
-            return it;
+        //if (it->time() == findTime)
+        //    return it;
+        if (std::abs(it->time() - findTime) <dtol) return it; 
     }
     return end;
   };
@@ -157,7 +158,7 @@ void worm::load(alps::hdf5::archive & ar) {
     }
     operator_string.push_back(vertexlist);
   }
-
+  Nprtcls = 0;
   for (SiteIndex i = 0; i < Nsites+1; i++) {
     dummy_it[i] = find_elem(operator_string[i].begin(), operator_string[i].end(), beta);
     Nprtcls += dummy_it[i]->before() * beta;
@@ -217,7 +218,7 @@ void worm::load(alps::hdf5::archive & ar) {
 }
 
 void worm::print_conf(std::ostream& os) const {
-  os << "\n\n Printing operator string";
+  os << "\n\n Printing operator string" << std::setprecision(16);
   for (SiteType i = 0; i < Nsites; i++) {
     os << "\nSite : " << i;
     int n = operator_string[i].size();

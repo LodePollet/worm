@@ -3,7 +3,6 @@
 
 void worm::update() {
   
-  size_t Nupd = 0;
   do {
     double q = rnd(MyGenerator);
     int a;
@@ -35,9 +34,10 @@ void worm::update() {
         update_statistics[statistics_tag::total_attempted][update_tag::glueworm] += 1.;
         update_statistics[a][update_tag::glueworm] += 1.;
       }
+      //std::cout << "return value : " << a << "\n";
     }
 #ifdef DEBUGMODE
-    print_conf(std::cout);
+    //print_conf(std::cout);
     try {
       test_conf();
     }
@@ -49,6 +49,7 @@ void worm::update() {
 #endif
     
     if (worm_diag) {
+      //print_conf(std::cout);
       mZ += 1.;
       MCdiag += 1;
     }
@@ -61,11 +62,6 @@ void worm::update() {
    if (worm_at_stop == 0) measure_Gpt();
 #endif
     }
-    Nupd++;
-    if (Nupd == 10000) {
-      Nupd = 0;
-    }
-    
   } while (!worm_diag);
 
 }
@@ -77,7 +73,7 @@ int worm::INSERTWORM() {
     cerr << "\nNon diagonal configuration in INSERTWORM ? \n" ; 
   }
   std::cout << "# Welcome to INSERTWORM\n";
-  print_conf(std::cout);
+   //print_conf(std::cout);
 #endif
 
   worm_dtime = 0;
@@ -482,16 +478,18 @@ int worm::MOVEWORM() {
 
 
 int worm::INSERTKINK() {
- 
+  //std::cout << "# Welcome to INSERTKINK worm_at_stop, site, time : " << worm_at_stop << " " << worm_head_it->link() << " " << worm_head_it->time() << "\t" << worm_head_it->get_assoc(0)->time() << "\t" << worm_head_it->get_assoc(1)->time() << "\n";
 #ifdef DEBUGMODE
   if (worm_diag) cerr << "Diagonal configuration in INSERTKINK ? \n\n";
 #endif
   if (worm_at_stop != 0) return impossible;
   if (worm_meas_densmat) return impossible;
   if (worm_passes_nb_kink == 1) return impossible;
+
   for (size_t const& j : zc[worm_head_it->link()]) {
     if (!is_not_close(worm_head_it->time(), worm_head_it->get_assoc(j)->time(), 2*dtol)) return impossible;
-  } 
+  }
+
   
   SiteIndex isite = worm_head_it->link();
 
@@ -605,11 +603,11 @@ int worm::INSERTKINK() {
 
 
 int worm::DELETEKINK() {
-  if (worm_meas_densmat ) return impossible; // no density matrix measurement
   
 #ifdef DEBUGMODE
   cout << "# Welcome to DELETEKINK : \n";
 #endif
+  if (worm_meas_densmat ) return impossible; // no density matrix measurement
 
   Diagram_type::iterator it = worm_head_it;                                    // it should become the iterator pointing to the kink to be deleted; needs to be changed depending on worm_at_stop == +/- 1
   SiteIndex isite = it->link();                                                   // worm is linked to itself
@@ -780,6 +778,7 @@ void worm::PASS_DUMMY(const int dir, const SiteType isite) {
 }
 
 int worm::PASSINTERACTION(const int dir, const Diagram_type::iterator it) {
+  //std::cout <<"# PASSINTERACTION...\n";
   // here : it is the iterator to the kink that will be passed, not the worm_head_it
   SiteIndex isite = worm_head_it->link();                             // current site
   StateType n_A = it->after();                                        // occupancy on kink after the hopping event on the current site  (before and after as always in the view of positive time [0, beta[)
@@ -882,7 +881,8 @@ int worm::PASSINTERACTION(const int dir, const Diagram_type::iterator it) {
 
 int worm::GLUEWORM() {
 #ifdef DEBUGMODE
-  cout << "# Welcome to GLUEWORM  : worm_at_stop : " << worm_at_stop << "\n";
+  //print_conf(std::cout);
+  cout << "# Welcome to GLUEWORM  : worm_at_stop : " << worm_at_stop << "sites : " << worm_head_it->link() << "\t" << worm_tail_it->link() << " times : " << worm_head_it->time() << "\t" << worm_tail_it->time() << "\n";
   if (worm_diag) cerr << "Diagonal configuration in GLUEWORM ? \n\n";
 #endif
   size_t isite = worm_head_it->link();
