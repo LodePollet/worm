@@ -78,9 +78,12 @@ public:
 
     iterator erase(const_iterator pos) {
         iterator last = stack.back();
+        size_t pos_idx = pos.stack_pos();
         stack.pop_back();
-        last.stack_pos() = pos.stack_pos();
-        stack[pos.stack_pos()] = last;
+        if (pos_idx != stack.size()) {
+            last.stack_pos() = pos_idx;
+            stack[pos_idx] = last;
+        }
         return list.erase(pos);
     }
 

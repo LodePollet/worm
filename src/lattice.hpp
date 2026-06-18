@@ -200,8 +200,9 @@ protected:
           pbcy(pbcy),
           pbcz(pbcz)
     {
-        plengths = { 1, Lx, Ly, Lz};
-        std::partial_sum(plengths.begin(), plengths.end(), plengths.begin(),
+        std::vector<size_t> tmp = { 1, Lx, Ly, Lz};
+        plengths.resize(tmp.size());
+        std::partial_sum(tmp.begin(), tmp.end(), plengths.begin(),
                          std::multiplies<size_t>{});
     }
 
@@ -340,7 +341,6 @@ struct ladder : square {
     {
         if ((Lx < 3) && pbcx)
             throw std::runtime_error("PBC with linear length < 3 leads to double counting of bonds");
-        generate_lattice([&](size_t bs) {return define_unitcell(bs);});
     }
 
     void print_name(std::ostream& os) const override {

@@ -52,7 +52,7 @@ public:
     }
 
     iterator at(size_t i) {
-        if (i > size())
+        if (i >= size())
             return end();
         iterator it = begin();
         for (; i > 0; --i)
@@ -60,7 +60,7 @@ public:
         return it;
     }
     const_iterator at(size_t i) const {
-        if (i > size())
+        if (i >= size())
             return end();
         const_iterator it = begin();
         for (; i > 0; --i)

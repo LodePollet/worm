@@ -1,11 +1,12 @@
 #include "worm.hpp"
+#include <cassert>
 
 
 void worm::update() {
   
   do {
     double q = rnd(MyGenerator);
-    int a;
+    int a = impossible;
     if (worm_diag) {
       if (q < update_prob_cuml[insertworm]) {
         a = INSERTWORM();
@@ -641,10 +642,11 @@ int worm::DELETEKINK() {
   
   SiteIndex adj_site = it->link();                                    // site to wich the current site is linked
   size_t linkdir = 0;
+  bool linkdir_found = false;
     for (auto const& zci : zc[isite]) {
-      linkdir = zci;
-      if (nb[isite][linkdir] == adj_site) break;
+      if (nb[isite][zci] == adj_site) { linkdir = zci; linkdir_found = true; break; }
     }
+  assert(linkdir_found);
   Diagram_type::iterator itlink = it->get_assoc(linkdir);
   StateType n_A_link = itlink->after();                               // occupancy on kink after  the hopping event on the linked site
   StateType n_B_link = itlink->before();                              // occupancy on kink before the hopping event on the linked site
@@ -785,11 +787,11 @@ int worm::PASSINTERACTION(const int dir, const Diagram_type::iterator it) {
   StateType n_B = it->before();                                       // occupancy on kink before the hopping event on the current site
   SiteIndex adj_site = it->link();                                    // site to wich the current site is linked
   size_t linkdir = 0;
+  bool linkdir_found = false;
     for (auto const& zci : zc[isite]) {
-      linkdir = zci;
-      if (nb[isite][linkdir] == adj_site) break;
+      if (nb[isite][zci] == adj_site) { linkdir = zci; linkdir_found = true; break; }
     }
-  // TODO : assert linkdir is not out of bounds
+  assert(linkdir_found);
   StateType n_A_link = it->get_assoc(linkdir)->after();               // occupancy on kink after  the hopping event on the linked site
   StateType n_B_link = it->get_assoc(linkdir)->before();              // occupancy on kink before the hopping event on the linked site
   

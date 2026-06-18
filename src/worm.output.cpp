@@ -159,10 +159,11 @@ void worm::load(alps::hdf5::archive & ar) {
     operator_string.push_back(vertexlist);
   }
   Nprtcls = 0;
-  for (SiteIndex i = 0; i < Nsites+1; i++) {
+  for (SiteIndex i = 0; i < Nsites; i++) {
     dummy_it[i] = find_elem(operator_string[i].begin(), operator_string[i].end(), beta);
     Nprtcls += dummy_it[i]->before() * beta;
   }
+  dummy_it[Nsites] = find_elem(operator_string[Nsites].begin(), operator_string[Nsites].end(), beta);
 
   std::cout << "# Restoring existing associations ... ";
   for (SiteIndex i = 0; i < Nsites; i++) {
@@ -225,9 +226,9 @@ void worm::print_conf(std::ostream& os) const {
     int ii = 0;
     for (Diagram_type::const_iterator it = operator_string[i].begin(); it != operator_string[i].end(); ++it, ++ii) {
       it->print();
-      if (ii > n) {
+      if (ii >= n) {
         os << "\n Error with list!\n";
-        char ch; cin >> ch;
+        throw std::runtime_error("print_conf: operator_string iteration exceeded list size");
       }
     }
     os << "\n--------------------\n\n\n";

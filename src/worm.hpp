@@ -230,7 +230,7 @@ private :
  
   // worm variables
   Diagram_type::iterator worm_tail_it;  // iterator pointing to the tail
-  Diagram_type::iterator worm_head_it;  // iterator pointing to the tail
+  Diagram_type::iterator worm_head_it;  // iterator pointing to the head
   vector<Diagram_type::iterator > dummy_it; // iterator pointing at dummy elements useful for measuring diag prop
 
   bool worm_diag;

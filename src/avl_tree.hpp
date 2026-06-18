@@ -8,6 +8,7 @@
 #include <exception>
 #include <stdexcept>
 #include <type_traits>
+#include <cassert>
 
 namespace AVL {
 
@@ -323,7 +324,7 @@ public:
     }
 
     tree(const tree& t) noexcept {
-	*this = t;
+	root = deep_copy_node(t.root);
     }
 
     tree(tree&& t) noexcept {
@@ -562,6 +563,7 @@ public:
 		    break;
 		} else {
 		    --j;
+		    assert(ptr->right_child);
 		    ptr = ptr->right_child;
 		}
 	    }
@@ -592,6 +594,7 @@ public:
 		    break;
 		} else {
 		    --j;
+		    assert(ptr->right_child);
 		    ptr = ptr->right_child;
 		}
 	    }

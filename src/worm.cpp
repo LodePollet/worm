@@ -202,8 +202,8 @@ worm::worm(parameters_type const & parameters, std::size_t seed_offset) : alps::
   }
 #endif
   
-  state_eval.resize(MyModel->get_nmax() - MyModel->get_nmin() + 1);
-  for (size_t i=0; i < state_eval.size(); i++) {
+  state_eval.resize(MyModel->get_nmax() + 1);
+  for (StateType i = MyModel->get_nmin(); i <= MyModel->get_nmax(); i++) {
     state_eval[i] = MyModel->stateval(i);
   }
   
@@ -407,8 +407,8 @@ void worm::measure() {
       std::cout << "\n# Testing OK...\n";
       counter[counter_tag::TEST] = 0;
     }
-    catch (const char* e) {
-      std::cerr << e << std::endl;
+    catch (const std::exception& e) {
+      std::cerr << e.what() << std::endl;
       exit(1);
     }
     counter[counter_tag::TEST] = 0;
@@ -533,7 +533,7 @@ void worm::measure_Gpt() {
     exit(1);
   }
   size_t index = static_cast<size_t>((can_window + dt) / (can_window * 2) * hist_gt.size());
-  if (index >= hist_gt.size()) std::runtime_error("index in measure_gpt is out of bounds ");
+  if (index >= hist_gt.size()) throw std::runtime_error("index in measure_gpt is out of bounds ");
   hist_gt[index] += 1./(C_worm);
 }
 #endif
