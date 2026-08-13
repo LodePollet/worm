@@ -58,6 +58,7 @@ void worm::update() {
       mG += 1.;
 #ifdef UNISYS
       if (worm_meas_densmat) measure_density_matrix();
+      measure_Gktau();
 #endif
 #ifdef CAN_WINDOW
    if (worm_at_stop == 0) measure_Gpt();

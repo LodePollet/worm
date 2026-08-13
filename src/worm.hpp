@@ -17,6 +17,7 @@
 
 #include <random>
 #include <vector>
+#include <complex>
 #include <list>
 #include <numeric>
 #include <time.h>
@@ -181,6 +182,7 @@ public :
 
   void measure_density_matrix();
   void update_hist();
+  void measure_Gktau();
 #ifdef CAN_WINDOW
   void measure_Gpt();
 #endif
@@ -294,6 +296,9 @@ private :
   double hist_dm_fac;
 #ifdef UNISYS
   std::vector<double> hist_densmat;
+  size_t Nfreq;
+  std::vector<double> hist_grtau_re;  // Nsites * Nfreq, indexed [r*Nfreq + n]
+  std::vector<double> hist_grtau_im;
 #endif
   std::vector<size_t> counter;
 #ifdef CAN_WINDOW

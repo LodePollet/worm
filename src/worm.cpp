@@ -43,6 +43,10 @@ void worm::define_parameters(parameters_type & parameters) {
   LATTICE::Base::define_parameters(parameters);
   model::define_parameters(parameters);
 
+#ifdef UNISYS
+  parameters.define<size_t>("Nfreq", 0, "number of non-negative bosonic Matsubara frequencies n for G(k,omega_n); 0 disables measurement");
+#endif
+
   std::string ModelClassifierName = parameters["model"].as<std::string>();
   if ( ModelClassifierName == "BoseHubbard" ) {
     BoseHubbard::define_custom_model_parameters(parameters);
@@ -162,6 +166,8 @@ worm::worm(parameters_type const & parameters, std::size_t seed_offset) : alps::
     //<< alps::accumulators::LogBinningAccumulator<vector<double> >("Density_Matrix2")
     << alps::accumulators::LogBinningAccumulator<vector<double> >("DensDens_CorrFun")
     << alps::accumulators::LogBinningAccumulator<vector<double> >("Winding_number_squared")
+    << alps::accumulators::LogBinningAccumulator<vector<double> >("Greenfun_k_omega_re")
+    << alps::accumulators::LogBinningAccumulator<vector<double> >("Greenfun_k_omega_im")
 #endif
 #ifdef CAN_WINDOW
     << alps::accumulators::LogBinningAccumulator<vector<double> >("Greenfun_p0_tau")
@@ -169,9 +175,17 @@ worm::worm(parameters_type const & parameters, std::size_t seed_offset) : alps::
   ;
 #ifdef UNISYS
   hist_densmat.resize(Nsites);
-  //hist_dd.resize(Nsites);
-  for (size_t i=0; i < hist_densmat.size(); i++) {
-    hist_densmat[i] = 0;
+  for (size_t i=0; i < hist_densmat.size(); i++) hist_densmat[i] = 0;
+
+  Nfreq = parameters["Nfreq"].as<size_t>();
+  if (Nfreq > 0) {
+    size_t Lx = parameters["Lx"].as<size_t>();
+    size_t Ly = parameters["Ly"].as<size_t>();
+    if (LATTICE::n_basis == 1 &&
+        ((Lx & (Lx-1)) != 0 || (LATTICE::dim > 1 && (Ly & (Ly-1)) != 0)))
+      throw std::runtime_error("G(k,omega_n) measurement requires Lx (and Ly) to be powers of 2");
+    hist_grtau_re.assign((size_t)Nsites * Nfreq, 0.);
+    hist_grtau_im.assign((size_t)Nsites * Nfreq, 0.);
   }
 #endif
 
@@ -365,6 +379,8 @@ void worm::measure() {
   if (sweeps == thermalization_sweeps) {
 #ifdef UNISYS
     for (size_t i=0; i < hist_densmat.size(); i++) hist_densmat[i] = 0;
+    std::fill(hist_grtau_re.begin(), hist_grtau_re.end(), 0.);
+    std::fill(hist_grtau_im.begin(), hist_grtau_im.end(), 0.);
 #endif
 #ifdef CAN_WINDOW
     for (size_t i=0; i < hist_gt.size(); i++) hist_gt[i] = 0;
@@ -436,9 +452,11 @@ void worm::force_reset_statistics() {
     //reset(measurements["Density_Matrix2"]);
     reset(measurements["DensDens_CorrFun"]);
     reset(measurements["Winding_number_squared"]);
-    for (size_t i=0; i < hist_densmat.size(); i++) {
-      hist_densmat[i] = 0;
-    }
+    reset(measurements["Greenfun_k_omega_re"]);
+    reset(measurements["Greenfun_k_omega_im"]);
+    for (size_t i=0; i < hist_densmat.size(); i++) hist_densmat[i] = 0;
+    std::fill(hist_grtau_re.begin(), hist_grtau_re.end(), 0.);
+    std::fill(hist_grtau_im.begin(), hist_grtau_im.end(), 0.);
 #endif
 #ifdef CAN_WINDOW
     reset(measurements["Greenfun_p0_tau"]);
@@ -450,6 +468,53 @@ void worm::force_reset_statistics() {
   }
   sweeps = thermalization_sweeps;
 }
+
+#ifdef UNISYS
+namespace {
+// In-place radix-2 Cooley-Tukey DIT FFT (forward exponent: -2πi k n / N).
+// Requires a.size() to be a power of 2.
+static void fft1d(std::vector<std::complex<double>>& a) {
+    const int n = static_cast<int>(a.size());
+    for (int i = 1, j = 0; i < n; i++) {
+        int bit = n >> 1;
+        for (; j & bit; bit >>= 1) j ^= bit;
+        j ^= bit;
+        if (i < j) std::swap(a[i], a[j]);
+    }
+    for (int len = 2; len <= n; len <<= 1) {
+        const double ang = -2.0 * M_PI / len;
+        const std::complex<double> wlen(std::cos(ang), std::sin(ang));
+        for (int i = 0; i < n; i += len) {
+            std::complex<double> w(1.0, 0.0);
+            for (int j = 0; j < len / 2; j++) {
+                std::complex<double> u = a[i + j], v = a[i + j + len/2] * w;
+                a[i + j]         = u + v;
+                a[i + j + len/2] = u - v;
+                w *= wlen;
+            }
+        }
+    }
+}
+
+// Separable 2D FFT, data in row-major order (outer index = y, inner = x).
+static void fft2d(std::vector<std::complex<double>>& data, size_t Lx, size_t Ly) {
+    std::vector<std::complex<double>> buf;
+    buf.reserve(std::max(Lx, Ly));
+    buf.resize(Lx);
+    for (size_t y = 0; y < Ly; y++) {
+        for (size_t x = 0; x < Lx; x++) buf[x] = data[y * Lx + x];
+        fft1d(buf);
+        for (size_t x = 0; x < Lx; x++) data[y * Lx + x] = buf[x];
+    }
+    buf.resize(Ly);
+    for (size_t x = 0; x < Lx; x++) {
+        for (size_t y = 0; y < Ly; y++) buf[y] = data[y * Lx + x];
+        fft1d(buf);
+        for (size_t y = 0; y < Ly; y++) data[y * Lx + x] = buf[y];
+    }
+}
+} // anonymous namespace
+#endif
 
 void worm::measure_corrfun() {
 #ifdef UNISYS
@@ -479,8 +544,30 @@ void worm::measure_corrfun() {
   measurements["Density_Matrix"] << hist_dm;
   //measurements["Density_Matrix2"] << hist_dm2;
   measurements["DensDens_CorrFun"] << hist_dd;
-  for (size_t i=0; i < hist_densmat.size(); i++) {
-    hist_densmat[i] = 0;
+  for (size_t i=0; i < hist_densmat.size(); i++) hist_densmat[i] = 0;
+
+  // G(k, omega_n) Matsubara measurement
+  if (Nfreq > 0) {
+    const size_t Lx = MyLatt->get_Ls(0);
+    const size_t Ly = (LATTICE::dim > 1 ? MyLatt->get_Ls(1) : 1);
+    const double norm = hist_dm_fac / Nmeasure2;
+    vector<double> gk_re((size_t)Nsites * Nfreq);
+    vector<double> gk_im((size_t)Nsites * Nfreq);
+    std::vector<std::complex<double>> buf((size_t)Nsites);
+    for (size_t n = 0; n < Nfreq; n++) {
+      for (size_t r = 0; r < (size_t)Nsites; r++)
+        buf[r] = std::complex<double>(hist_grtau_re[r*Nfreq + n],
+                                      hist_grtau_im[r*Nfreq + n]) * norm;
+      fft2d(buf, Lx, Ly);
+      for (size_t k = 0; k < (size_t)Nsites; k++) {
+        gk_re[k*Nfreq + n] = buf[k].real();
+        gk_im[k*Nfreq + n] = buf[k].imag();
+      }
+    }
+    std::fill(hist_grtau_re.begin(), hist_grtau_re.end(), 0.);
+    std::fill(hist_grtau_im.begin(), hist_grtau_im.end(), 0.);
+    measurements["Greenfun_k_omega_re"] << gk_re;
+    measurements["Greenfun_k_omega_im"] << gk_im;
   }
 #endif
 #ifdef CAN_WINDOW
@@ -521,6 +608,26 @@ void worm::measure_density_matrix() {
         hist_densmat[0] += (outer_dens > inner_dens ? 0.5/C_worm : outer_dens/( inner_dens * 2*C_worm  ) );
       }
     }
+  }
+#endif
+}
+
+void worm::measure_Gktau() {
+#ifdef UNISYS
+  if (Nfreq == 0) return;
+  if (LATTICE::n_basis > 1) return;
+  if (!parameters["pbcx"]) return;
+  if (LATTICE::dim > 1 && !parameters["pbcy"]) return;
+  // r = r_tail - r_head, consistent with measure_density_matrix convention
+  size_t r = (size_t)MyLatt->relNumbering(worm_head_it->link(), worm_tail_it->link());
+  double dtau = worm_head_it->time() - worm_tail_it->time();
+  if (dtau < 0.) dtau += beta;
+  const double two_pi_over_beta = 2.0 * M_PI / beta;
+  const double inv_Cworm = 1.0 / C_worm;
+  for (size_t n = 0; n < Nfreq; n++) {
+    const double phase = two_pi_over_beta * n * dtau;
+    hist_grtau_re[r * Nfreq + n] += std::cos(phase) * inv_Cworm;
+    hist_grtau_im[r * Nfreq + n] += std::sin(phase) * inv_Cworm;
   }
 #endif
 }

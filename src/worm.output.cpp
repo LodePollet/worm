@@ -89,6 +89,23 @@ void worm::save(alps::hdf5::archive & ar) const {
   ar["checkpoint/configuration/state"] << state;
 #ifdef UNISYS
   ar["checkpoint/configuration/hist_densmat"] << hist_densmat;
+  if (Nfreq > 0) {
+    ar["checkpoint/configuration/hist_grtau_re"] << hist_grtau_re;
+    ar["checkpoint/configuration/hist_grtau_im"] << hist_grtau_im;
+    // k-point and frequency metadata (deterministic, but stored for convenience)
+    const size_t Lx = MyLatt->get_Ls(0);
+    const size_t Ly = (LATTICE::dim > 1 ? MyLatt->get_Ls(1) : 1);
+    vector<double> kpoints(2 * (size_t)Nsites);
+    for (size_t r = 0; r < (size_t)Nsites; r++) {
+      kpoints[2*r]   = 2.0 * M_PI * (r % Lx) / Lx;
+      kpoints[2*r+1] = 2.0 * M_PI * (r / Lx) / Ly;
+    }
+    vector<double> freqs(Nfreq);
+    for (size_t n = 0; n < Nfreq; n++) freqs[n] = 2.0 * M_PI * n / beta;
+    ar["checkpoint/greenfun_kw/kpoints"] << kpoints;
+    ar["checkpoint/greenfun_kw/matsubara_freqs"] << freqs;
+    ar["checkpoint/greenfun_kw/flat_index_convention"] << std::string("k_idx * Nfreq + n");
+  }
 #endif
 #ifdef CAN_WINDOW
   ar["checkpoint/configuration/hist_gt"] << hist_gt;
@@ -134,6 +151,10 @@ void worm::load(alps::hdf5::archive & ar) {
   ar["checkpoint/configuration/state"] >> state;
 #ifdef UNISYS
   ar["checkpoint/configuration/hist_densmat"] >> hist_densmat;
+  if (Nfreq > 0) {
+    ar["checkpoint/configuration/hist_grtau_re"] >> hist_grtau_re;
+    ar["checkpoint/configuration/hist_grtau_im"] >> hist_grtau_im;
+  }
 #endif
 #ifdef CAN_WINDOW
   ar["checkpoint/configuration/hist_gt"] >> hist_gt;
