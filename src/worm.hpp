@@ -241,6 +241,9 @@ private :
   bool worm_meas_densmat;
   double worm_dtime;
   bool new_measurement;
+public:
+  unsigned long long dbg_global_call_count = 0;
+private:
   
   void find_assoc_insert(const SiteIndex, Diagram_type::iterator, const int );
   void find_assoc_delete(const SiteIndex, Diagram_type::iterator );

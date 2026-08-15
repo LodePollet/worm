@@ -36,7 +36,8 @@ void worm::define_parameters(parameters_type & parameters) {
         .define<double>("p_moveworm",           0.3,      "update probability to move worm head around")
         .define<double>("p_insertkink",         0.2,      "update probability to insert kink at position of worm head")
         .define<double>("p_deletekink",         0.2,      "update probability tp remove kink at position of worm head")
-        .define<double>("p_glueworm",           0.3,      "update_probability to glue worm head and tail together and go back to diagonal configuration");
+        .define<double>("p_glueworm",           0.3,      "update_probability to glue worm head and tail together and go back to diagonal configuration")
+        .define<double>("dtol_scale",           1.0,      "multiplier applied to the automatically computed floating-point time tolerance dtol (increase to mitigate rare chronology round-off errors)");
 
   
   
@@ -90,7 +91,7 @@ worm::worm(parameters_type const & parameters, std::size_t seed_offset) : alps::
   int beta_int = int(beta);
   int bin_digits = 0;
   for (; beta_int > 0; beta_int >>= 1) bin_digits++;
-  dtol = pow(2,-DBL_MANT_DIG+bin_digits);
+  dtol = pow(2,-DBL_MANT_DIG+bin_digits) * double(parameters["dtol_scale"]);
   //dtol = 1e-14;
   std::cout << "# dtol : " << dtol << "\n";
 
@@ -179,11 +180,6 @@ worm::worm(parameters_type const & parameters, std::size_t seed_offset) : alps::
 
   Nfreq = parameters["Nfreq"].as<size_t>();
   if (Nfreq > 0) {
-    size_t Lx = parameters["Lx"].as<size_t>();
-    size_t Ly = parameters["Ly"].as<size_t>();
-    if (LATTICE::n_basis == 1 &&
-        ((Lx & (Lx-1)) != 0 || (LATTICE::dim > 1 && (Ly & (Ly-1)) != 0)))
-      throw std::runtime_error("G(k,omega_n) measurement requires Lx (and Ly) to be powers of 2");
     hist_grtau_re.assign((size_t)Nsites * Nfreq, 0.);
     hist_grtau_im.assign((size_t)Nsites * Nfreq, 0.);
   }
@@ -471,10 +467,32 @@ void worm::force_reset_statistics() {
 
 #ifdef UNISYS
 namespace {
+// Naive O(n^2) DFT (forward exponent: -2πi k n / N), used when n is not a
+// power of 2. Lattice sizes here are small (worm diagram cost dominates),
+// so the asymptotics don't matter.
+static void dft1d_naive(std::vector<std::complex<double>>& a) {
+    const int n = static_cast<int>(a.size());
+    std::vector<std::complex<double>> out(n, std::complex<double>(0.0, 0.0));
+    for (int k = 0; k < n; k++) {
+        const double ang = -2.0 * M_PI * k / n;
+        const std::complex<double> wk(std::cos(ang), std::sin(ang));
+        std::complex<double> w(1.0, 0.0);
+        for (int j = 0; j < n; j++) {
+            out[k] += a[j] * w;
+            w *= wk;
+        }
+    }
+    a.swap(out);
+}
+
 // In-place radix-2 Cooley-Tukey DIT FFT (forward exponent: -2πi k n / N).
-// Requires a.size() to be a power of 2.
+// Requires a.size() to be a power of 2; falls back to dft1d_naive otherwise.
 static void fft1d(std::vector<std::complex<double>>& a) {
     const int n = static_cast<int>(a.size());
+    if (n & (n - 1)) {
+        dft1d_naive(a);
+        return;
+    }
     for (int i = 1, j = 0; i < n; i++) {
         int bit = n >> 1;
         for (; j & bit; bit >>= 1) j ^= bit;
@@ -897,7 +915,7 @@ void worm::find_assoc_insert(const SiteIndex cursite, Diagram_type::iterator  it
   // it is the iterator to the newly insterted element
   // memory for its associations has been allocated already but the associations must be set correctly here
   // and we need to check on the neighbors if their associations need to be changed
-  
+
   // part 1 : iterators for the new element located on site cursite
   //std::cout<< "# Welcome to find_assoc_insert " << cursite << "\t" << *it << "\n";
   // we go one element up where we by assumption have a properly associated element
@@ -905,10 +923,14 @@ void worm::find_assoc_insert(const SiteIndex cursite, Diagram_type::iterator  it
   ito= it;
   ++ito;
   if (ito == operator_string[cursite].end()) ito = operator_string[cursite].begin();
-  
+
   double t0 = it->time();
   it->time( t0 + shift * dtol*2);
- 
+
+#if defined(DEBUGMODE) && defined(FAI_TRACE)
+  bool trace = (dbg_global_call_count >= 940 && dbg_global_call_count <= 960);
+#endif
+
   for (size_t j = 0; j < zcmax; ++j) {
     SiteIndex s = nb[cursite][j];
     if (s == -1) {
@@ -920,15 +942,33 @@ void worm::find_assoc_insert(const SiteIndex cursite, Diagram_type::iterator  it
     if (itp == operator_string[s].begin()) itp = operator_string[s].end();
     --itp;
     it->set_assoc(j, itl);
+#if defined(DEBUGMODE) && defined(FAI_TRACE)
+    if (trace)
+      std::cerr << "# FAI1 cursite=" << cursite << " j=" << j << " s=" << s
+                 << " it_time=" << it->time() << " ito(site,time,color)=(" << cursite << "," << ito->time() << "," << ito->color() << ")"
+                 << " itl(time,color)=(" << itl->time() << "," << itl->color() << ")"
+                 << " itp(time,color)=(" << itp->time() << "," << itp->color() << ")\n";
+#endif
     while (!t_between(it->time(), itp->time(), itl->time())) {
       itl = itp;
       if (itp == operator_string[s].begin()) itp = operator_string[s].end();
       --itp;
       it->set_assoc(j, itl);
+#if defined(DEBUGMODE) && defined(FAI_TRACE)
+      if (trace)
+        std::cerr << "# FAI1-loop cursite=" << cursite << " j=" << j
+                   << " itl(time,color)=(" << itl->time() << "," << itl->color() << ")"
+                   << " itp(time,color)=(" << itp->time() << "," << itp->color() << ")\n";
+#endif
     }
+#if defined(DEBUGMODE) && defined(FAI_TRACE)
+    if (trace)
+      std::cerr << "# FAI1-result cursite=" << cursite << " j=" << j << " -> assoc(time,color)=("
+                 << it->get_assoc(j)->time() << "," << it->get_assoc(j)->color() << ")\n";
+#endif
   }
-  
-  
+
+
   // part 2 : iterators on the neighbors might have to be set newly in the "opposite" direction
   for (size_t const& j : zc[cursite]) {
     SiteIndex s = nb[cursite][j];
@@ -941,16 +981,37 @@ void worm::find_assoc_insert(const SiteIndex cursite, Diagram_type::iterator  it
     if (itl->time() == it->time()) {
       itl->set_assoc(oppdir, it);
     }
+#if defined(DEBUGMODE) && defined(FAI_TRACE)
+    if (trace)
+      std::cerr << "# FAI2 cursite=" << cursite << " j=" << j << " s=" << s << " oppdir=" << oppdir
+                 << " it_time=" << it->time()
+                 << " itl(time,color)=(" << itl->time() << "," << itl->color() << ")"
+                 << " itp(site,time,color)=(" << s << "," << itp->time() << "," << itp->color() << ")"
+                 << " itw(time,color)=(" << itw->time() << "," << itw->color() << ")\n";
+#endif
     while ((itp->time() != itw->time())  && ( t_between(it->time(), itp->time(), itw->time()) )) {
       itp->set_assoc(oppdir, it);
+#if defined(DEBUGMODE) && defined(FAI_TRACE)
+      if (trace)
+        std::cerr << "# FAI2-set cursite=" << cursite << " j=" << j << " s=" << s
+                   << " itp_now_points(oppdir=" << oppdir << ") to it(time=" << it->time() << ")"
+                   << " -- itp(site,time,color)=(" << s << "," << itp->time() << "," << itp->color() << ")\n";
+#endif
       if (itp == operator_string[s].begin()) itp = operator_string[s].end();
       --itp;
       itw = itp->get_assoc(oppdir);
+#if defined(DEBUGMODE) && defined(FAI_TRACE)
+      if (trace)
+        std::cerr << "# FAI2-loop cursite=" << cursite << " j=" << j << " s=" << s
+                   << " itp(time,color)=(" << itp->time() << "," << itp->color() << ")"
+                   << " itw(time,color)=(" << itw->time() << "," << itw->color() << ")\n";
+#endif
     }
   }
-  
+
   it->time(t0);
 }
+
 
 
 

@@ -231,15 +231,22 @@ struct cubic : lattice<3,1> {
     {
         if (((Lx < 3) && pbcx) || ((Ly < 3) && pbcy) || ((Lz < 3) && pbcz))
             throw std::runtime_error("PBC with linear length < 3 leads to double counting of bonds");
+        if (((Lx == 3) && pbcx) || ((Ly == 3) && pbcy) || ((Lz == 3) && pbcz))
+            throw std::runtime_error("PBC with linear length == 3 makes a site's two neighbors along "
+                                      "that axis mutually adjacent (a 3-cycle), which violates the "
+                                      "association bookkeeping's assumption that a site's distinct "
+                                      "neighbor directions never coincide in time (see find_assoc_insert). "
+                                      "See docs/pbc_L3_limitation.md for details -- PBC with L==3 requires "
+                                      "a structural change to the code, not just a lattice-size choice.");
         generate_lattice([&](size_t bs) {return define_unitcell(bs);});
     }
-    
+
     void define_unitcell (size_t base) {
         auto mp = [](Base::DirectionIndex d, size_t site) {return std::make_pair(d, site);};
         NeighborType nb0 = {mp(0,next(0,base)),
-                            mp(3,previous(0,base)), 
-                            mp(1,next(1,base)), 
-                            mp(4,previous(1,base)), 
+                            mp(3,previous(0,base)),
+                            mp(1,next(1,base)),
+                            mp(4,previous(1,base)),
                             mp(2,next(2,base)),
                             mp(5,previous(2,base)),
                            };
@@ -273,9 +280,16 @@ struct square : lattice<2,1> {
     {
         if (((Lx < 3) && pbcx) || ((Ly < 3) && pbcy))
             throw std::runtime_error("PBC with linear length < 3 leads to double counting of bonds");
+        if (((Lx == 3) && pbcx) || ((Ly == 3) && pbcy))
+            throw std::runtime_error("PBC with linear length == 3 makes a site's two neighbors along "
+                                      "that axis mutually adjacent (a 3-cycle), which violates the "
+                                      "association bookkeeping's assumption that a site's distinct "
+                                      "neighbor directions never coincide in time (see find_assoc_insert). "
+                                      "See docs/pbc_L3_limitation.md for details -- PBC with L==3 requires "
+                                      "a structural change to the code, not just a lattice-size choice.");
         generate_lattice([&](size_t bs) {return define_unitcell(bs);});
     }
-    
+
     void define_unitcell (size_t base) {
         auto mp = [](Base::DirectionIndex d, size_t site) {return std::make_pair(d, site);};
         NeighborType nb0 = {mp(0,next(0,base)),
@@ -358,6 +372,13 @@ struct honeycomb : lattice<2,2> {
     {
         if (((Lx < 2) && pbcx) || ((Ly < 2) && pbcy))
             throw std::runtime_error("PBC with linear length < 2 leads to double counting of bonds");
+        if (((Lx == 3) && pbcx) || ((Ly == 3) && pbcy))
+            throw std::runtime_error("PBC with linear length == 3 makes a site's two neighbors along "
+                                      "that crystal axis mutually adjacent (a 3-cycle), which violates "
+                                      "the association bookkeeping's assumption that a site's distinct "
+                                      "neighbor directions never coincide in time (see find_assoc_insert). "
+                                      "See docs/pbc_L3_limitation.md for details -- PBC with L==3 requires "
+                                      "a structural change to the code, not just a lattice-size choice.");
         generate_lattice([&](size_t bs) {return define_unitcell(bs);});
     }
 
@@ -399,6 +420,13 @@ struct triangular : lattice<2,1> {
     {
         if (((Lx < 3) && pbcx) || ((Ly < 3) && pbcy))
             throw std::runtime_error("PBC with linear length < 3 leads to double counting of bonds");
+        if (((Lx == 3) && pbcx) || ((Ly == 3) && pbcy))
+            throw std::runtime_error("PBC with linear length == 3 makes a site's two neighbors along "
+                                      "that crystal axis mutually adjacent (a 3-cycle), which violates "
+                                      "the association bookkeeping's assumption that a site's distinct "
+                                      "neighbor directions never coincide in time (see find_assoc_insert). "
+                                      "See docs/pbc_L3_limitation.md for details -- PBC with L==3 requires "
+                                      "a structural change to the code, not just a lattice-size choice.");
         generate_lattice([&](size_t bs) {return define_unitcell(bs);});
     }
 
