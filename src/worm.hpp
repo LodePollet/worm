@@ -182,8 +182,10 @@ public :
 
   void measure_density_matrix();
   void update_hist();
+#ifdef MATSUBARA_MEAS
   void measure_Gktau();
   void measure_G0tau();
+#endif
 #ifdef CAN_WINDOW
   void measure_Gpt();
 #endif
@@ -300,11 +302,13 @@ private:
   double hist_dm_fac;
 #ifdef UNISYS
   std::vector<double> hist_densmat;
+#ifdef MATSUBARA_MEAS
   size_t Nfreq;
   std::vector<double> hist_grtau_re;  // Nsites * Nfreq, indexed [r*Nfreq + n]
   std::vector<double> hist_grtau_im;
   size_t Ntau_bins;
   std::vector<double> hist_g0tau;     // Ntau_bins, direct binned G(k=0,tau) diagnostic
+#endif
 #endif
   std::vector<size_t> counter;
 #ifdef CAN_WINDOW

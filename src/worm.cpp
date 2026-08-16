@@ -44,7 +44,7 @@ void worm::define_parameters(parameters_type & parameters) {
   LATTICE::Base::define_parameters(parameters);
   model::define_parameters(parameters);
 
-#ifdef UNISYS
+#if defined(UNISYS) && defined(MATSUBARA_MEAS)
   parameters.define<size_t>("Nfreq", 0, "number of non-negative bosonic Matsubara frequencies n for G(k,omega_n); 0 disables measurement");
   parameters.define<size_t>("Ntau_bins", 0, "number of imaginary-time bins over [0,beta) for the direct binned G(k=0,tau) diagnostic; 0 disables measurement");
 #endif
@@ -168,9 +168,11 @@ worm::worm(parameters_type const & parameters, std::size_t seed_offset) : alps::
     //<< alps::accumulators::LogBinningAccumulator<vector<double> >("Density_Matrix2")
     << alps::accumulators::LogBinningAccumulator<vector<double> >("DensDens_CorrFun")
     << alps::accumulators::LogBinningAccumulator<vector<double> >("Winding_number_squared")
+#ifdef MATSUBARA_MEAS
     << alps::accumulators::LogBinningAccumulator<vector<double> >("Greenfun_k_omega_re")
     << alps::accumulators::LogBinningAccumulator<vector<double> >("Greenfun_k_omega_im")
     << alps::accumulators::LogBinningAccumulator<vector<double> >("Greenfun_k0_tau_binned")
+#endif
 #endif
 #ifdef CAN_WINDOW
     << alps::accumulators::LogBinningAccumulator<vector<double> >("Greenfun_p0_tau")
@@ -180,6 +182,7 @@ worm::worm(parameters_type const & parameters, std::size_t seed_offset) : alps::
   hist_densmat.resize(Nsites);
   for (size_t i=0; i < hist_densmat.size(); i++) hist_densmat[i] = 0;
 
+#ifdef MATSUBARA_MEAS
   Nfreq = parameters["Nfreq"].as<size_t>();
   if (Nfreq > 0) {
     hist_grtau_re.assign((size_t)Nsites * Nfreq, 0.);
@@ -190,6 +193,7 @@ worm::worm(parameters_type const & parameters, std::size_t seed_offset) : alps::
   if (Ntau_bins > 0) {
     hist_g0tau.assign(Ntau_bins, 0.);
   }
+#endif
 #endif
 
 #ifdef CAN_WINDOW
@@ -382,9 +386,11 @@ void worm::measure() {
   if (sweeps == thermalization_sweeps) {
 #ifdef UNISYS
     for (size_t i=0; i < hist_densmat.size(); i++) hist_densmat[i] = 0;
+#ifdef MATSUBARA_MEAS
     std::fill(hist_grtau_re.begin(), hist_grtau_re.end(), 0.);
     std::fill(hist_grtau_im.begin(), hist_grtau_im.end(), 0.);
     std::fill(hist_g0tau.begin(), hist_g0tau.end(), 0.);
+#endif
 #endif
 #ifdef CAN_WINDOW
     for (size_t i=0; i < hist_gt.size(); i++) hist_gt[i] = 0;
@@ -456,13 +462,15 @@ void worm::force_reset_statistics() {
     //reset(measurements["Density_Matrix2"]);
     reset(measurements["DensDens_CorrFun"]);
     reset(measurements["Winding_number_squared"]);
+#ifdef MATSUBARA_MEAS
     reset(measurements["Greenfun_k_omega_re"]);
     reset(measurements["Greenfun_k_omega_im"]);
     reset(measurements["Greenfun_k0_tau_binned"]);
-    for (size_t i=0; i < hist_densmat.size(); i++) hist_densmat[i] = 0;
     std::fill(hist_grtau_re.begin(), hist_grtau_re.end(), 0.);
     std::fill(hist_grtau_im.begin(), hist_grtau_im.end(), 0.);
     std::fill(hist_g0tau.begin(), hist_g0tau.end(), 0.);
+#endif
+    for (size_t i=0; i < hist_densmat.size(); i++) hist_densmat[i] = 0;
 #endif
 #ifdef CAN_WINDOW
     reset(measurements["Greenfun_p0_tau"]);
@@ -475,7 +483,7 @@ void worm::force_reset_statistics() {
   sweeps = thermalization_sweeps;
 }
 
-#ifdef UNISYS
+#if defined(UNISYS) && defined(MATSUBARA_MEAS)
 namespace {
 // Naive O(n^2) DFT (forward exponent: -2πi k n / N), used when n is not a
 // power of 2. Lattice sizes here are small (worm diagram cost dominates),
@@ -574,6 +582,7 @@ void worm::measure_corrfun() {
   measurements["DensDens_CorrFun"] << hist_dd;
   for (size_t i=0; i < hist_densmat.size(); i++) hist_densmat[i] = 0;
 
+#ifdef MATSUBARA_MEAS
   // G(k, omega_n) Matsubara measurement
   if (Nfreq > 0) {
     const size_t Lx = MyLatt->get_Ls(0);
@@ -609,6 +618,7 @@ void worm::measure_corrfun() {
     std::fill(hist_g0tau.begin(), hist_g0tau.end(), 0.);
     measurements["Greenfun_k0_tau_binned"] << g0tau;
   }
+#endif
 #endif
 #ifdef CAN_WINDOW
   vector<double> hist_gft(hist_gt.size());
@@ -652,6 +662,7 @@ void worm::measure_density_matrix() {
 #endif
 }
 
+#ifdef MATSUBARA_MEAS
 void worm::measure_Gktau() {
 #ifdef UNISYS
   if (Nfreq == 0) return;
@@ -706,6 +717,7 @@ void worm::measure_G0tau() {
   //hist_g0tau[bin] += 1.0 / C_worm;
 #endif
 }
+#endif
 
 #ifdef CAN_WINDOW
 void worm::measure_Gpt() {

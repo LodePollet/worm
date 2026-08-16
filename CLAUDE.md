@@ -21,6 +21,7 @@ Key CMake flags (all optional):
 | `-DDEBUG=ON` | `OFF` | Enables `DEBUGMODE`: runs `test_conf()` after every update |
 | `-DUNIFORM=OFF` | `ON` | Uniform (`UNISYS`) vs site/bond-inhomogeneous parameters |
 | `-DCWINDOW=ON` | `OFF` | Canonical window for Green's function measurement |
+| `-DMATSUBARA=ON` | `OFF` | Enables `G(k,omega_n)` Matsubara and binned `G(k=0,tau)` measurement (`Nfreq`/`Ntau_bins` params); adds per-step measurement cost, off by default |
 
 This produces two executables: `qmc_worm` (single-core) and `qmc_worm_mpi` (MPI).
 

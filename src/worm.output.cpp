@@ -89,6 +89,7 @@ void worm::save(alps::hdf5::archive & ar) const {
   ar["checkpoint/configuration/state"] << state;
 #ifdef UNISYS
   ar["checkpoint/configuration/hist_densmat"] << hist_densmat;
+#ifdef MATSUBARA_MEAS
   if (Nfreq > 0) {
     ar["checkpoint/configuration/hist_grtau_re"] << hist_grtau_re;
     ar["checkpoint/configuration/hist_grtau_im"] << hist_grtau_im;
@@ -106,6 +107,7 @@ void worm::save(alps::hdf5::archive & ar) const {
     ar["checkpoint/greenfun_kw/matsubara_freqs"] << freqs;
     ar["checkpoint/greenfun_kw/flat_index_convention"] << std::string("k_idx * Nfreq + n");
   }
+#endif
 #endif
 #ifdef CAN_WINDOW
   ar["checkpoint/configuration/hist_gt"] << hist_gt;
@@ -151,10 +153,12 @@ void worm::load(alps::hdf5::archive & ar) {
   ar["checkpoint/configuration/state"] >> state;
 #ifdef UNISYS
   ar["checkpoint/configuration/hist_densmat"] >> hist_densmat;
+#ifdef MATSUBARA_MEAS
   if (Nfreq > 0) {
     ar["checkpoint/configuration/hist_grtau_re"] >> hist_grtau_re;
     ar["checkpoint/configuration/hist_grtau_im"] >> hist_grtau_im;
   }
+#endif
 #endif
 #ifdef CAN_WINDOW
   ar["checkpoint/configuration/hist_gt"] >> hist_gt;
