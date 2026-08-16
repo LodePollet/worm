@@ -186,10 +186,7 @@ public :
   void measure_Gktau();
   void measure_G0tau();
 #endif
-#ifdef CAN_WINDOW
-  void measure_Gpt();
-#endif
-  
+
 protected:
   unsigned long sweeps;
   unsigned long thermalization_sweeps;
@@ -312,9 +309,7 @@ private:
 #endif
   std::vector<size_t> counter;
 #ifdef CAN_WINDOW
-  static constexpr size_t Ntimes_gt = 200;
   static constexpr double can_window = 0.1;  // fraction of the imaginary time above and below the worm tail in which the worm head can move
-  std::vector<double> hist_gt;
 #endif
   
   mt19937 MyGenerator;

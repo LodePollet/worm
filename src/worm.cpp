@@ -174,9 +174,6 @@ worm::worm(parameters_type const & parameters, std::size_t seed_offset) : alps::
     << alps::accumulators::LogBinningAccumulator<vector<double> >("Greenfun_k0_tau_binned")
 #endif
 #endif
-#ifdef CAN_WINDOW
-    << alps::accumulators::LogBinningAccumulator<vector<double> >("Greenfun_p0_tau")
-#endif
   ;
 #ifdef UNISYS
   hist_densmat.resize(Nsites);
@@ -194,11 +191,6 @@ worm::worm(parameters_type const & parameters, std::size_t seed_offset) : alps::
     hist_g0tau.assign(Ntau_bins, 0.);
   }
 #endif
-#endif
-
-#ifdef CAN_WINDOW
-  hist_gt.resize(Ntimes_gt);	
-  for (size_t i=0; i < hist_gt.size(); i++) hist_gt[i] = 0;
 #endif
   
   
@@ -392,9 +384,6 @@ void worm::measure() {
     std::fill(hist_g0tau.begin(), hist_g0tau.end(), 0.);
 #endif
 #endif
-#ifdef CAN_WINDOW
-    for (size_t i=0; i < hist_gt.size(); i++) hist_gt[i] = 0;
-#endif
     return;
   }
 
@@ -441,8 +430,6 @@ void worm::measure() {
   }
 
   if (counter[counter_tag::WRITE] >= Nsave) {
-    //alps::hdf5::archive ar(parameters["outputfile"].as<std::string>(), "w");
-    //ar["samples/operator_string_" + to_string(counter[counter_tag::SAMPLE_NUM]++)] << serialize_op_string();
     save(parameters["checkpoint"]);
     counter[counter_tag::WRITE] = 0;
   }
@@ -472,10 +459,6 @@ void worm::force_reset_statistics() {
 #endif
     for (size_t i=0; i < hist_densmat.size(); i++) hist_densmat[i] = 0;
 #endif
-#ifdef CAN_WINDOW
-    reset(measurements["Greenfun_p0_tau"]);
-    for (size_t i=0; i < hist_gt.size(); i++) hist_gt[i] = 0;
-#endif 
   }
   for (size_t i=0; i < statistics_tag::statistics_count; i++) {
     for (size_t j=0; j < update_tag::update_count; j++) update_statistics[i][j] = 0;
@@ -620,15 +603,6 @@ void worm::measure_corrfun() {
   }
 #endif
 #endif
-#ifdef CAN_WINDOW
-  vector<double> hist_gft(hist_gt.size());
-  double dtau = (2 * can_window * beta) / hist_gt.size();
-  for (size_t i=0; i < hist_gft.size(); i++) {
-    hist_gft[i] = hist_gt[i] * hist_dm_fac / Nmeasure2 / dtau;
-    hist_gt[i] = 0;
-  }
-  measurements["Greenfun_p0_tau"] << hist_gft;
-#endif
 }
 
 
@@ -677,13 +651,8 @@ void worm::measure_Gktau() {
   double fractpart, intpart;
   double dt = Nprtcls/beta;
   fractpart = modf(dt, &intpart);
-  //size_t index = static_cast<size_t>(fractpart * hist_gt.size());
-  //if (index >= hist_gt.size()) std::runtime_error("index in measure_gpt (gcan) is out of bounds ");
-  //hist_gt[index] += 1./(C_worm);
   double dtau = fractpart * beta;
 
-  //double dtau = worm_head_it->time() - worm_tail_it->time();
-  //if (dtau < 0.) dtau += beta;
   const double two_pi_over_beta = 2.0 * M_PI / beta;
   for (size_t n = 0; n < Nfreq; n++) {
     const double phase = two_pi_over_beta * n * dtau;
@@ -708,27 +677,9 @@ void worm::measure_G0tau() {
   double dt = Nprtcls/beta;
   fractpart = modf(dt, &intpart);
   size_t index = static_cast<size_t>(fractpart * hist_g0tau.size());
-  if (index >= hist_g0tau.size()) std::runtime_error("index in measure_gpt (gcan) is out of bounds ");
+  if (index >= hist_g0tau.size()) throw std::runtime_error("index in measure_G0tau is out of bounds ");
   hist_g0tau[index] += 1./(C_worm);
-  //double dtau = worm_head_it->time() - worm_tail_it->time();
-  //if (dtau < 0.) dtau += beta;
-  //size_t bin = static_cast<size_t>(dtau / beta * Ntau_bins);
-  //if (bin >= Ntau_bins) bin = Ntau_bins - 1;
-  //hist_g0tau[bin] += 1.0 / C_worm;
 #endif
-}
-#endif
-
-#ifdef CAN_WINDOW
-void worm::measure_Gpt() {
-  double dt = Nprtcls/beta - canonical;
-  if (( dt < -can_window) || (dt > can_window)) {
-    cerr << "# dt is out of bounds in measure_gpt " << dt << "\t" << Nprtcls << "\n";
-    exit(1);
-  }
-  size_t index = static_cast<size_t>((can_window + dt) / (can_window * 2) * hist_gt.size());
-  if (index >= hist_gt.size()) throw std::runtime_error("index in measure_gpt is out of bounds ");
-  hist_gt[index] += 1./(C_worm);
 }
 #endif
 

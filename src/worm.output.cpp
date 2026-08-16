@@ -109,9 +109,6 @@ void worm::save(alps::hdf5::archive & ar) const {
   }
 #endif
 #endif
-#ifdef CAN_WINDOW
-  ar["checkpoint/configuration/hist_gt"] << hist_gt;
-#endif
 
 }
 
@@ -159,9 +156,6 @@ void worm::load(alps::hdf5::archive & ar) {
     ar["checkpoint/configuration/hist_grtau_im"] >> hist_grtau_im;
   }
 #endif
-#endif
-#ifdef CAN_WINDOW
-  ar["checkpoint/configuration/hist_gt"] >> hist_gt;
 #endif
 
   std::istringstream engine_ss(engine_str);
