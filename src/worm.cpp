@@ -46,6 +46,7 @@ void worm::define_parameters(parameters_type & parameters) {
 
 #ifdef UNISYS
   parameters.define<size_t>("Nfreq", 0, "number of non-negative bosonic Matsubara frequencies n for G(k,omega_n); 0 disables measurement");
+  parameters.define<size_t>("Ntau_bins", 0, "number of imaginary-time bins over [0,beta) for the direct binned G(k=0,tau) diagnostic; 0 disables measurement");
 #endif
 
   std::string ModelClassifierName = parameters["model"].as<std::string>();
@@ -169,6 +170,7 @@ worm::worm(parameters_type const & parameters, std::size_t seed_offset) : alps::
     << alps::accumulators::LogBinningAccumulator<vector<double> >("Winding_number_squared")
     << alps::accumulators::LogBinningAccumulator<vector<double> >("Greenfun_k_omega_re")
     << alps::accumulators::LogBinningAccumulator<vector<double> >("Greenfun_k_omega_im")
+    << alps::accumulators::LogBinningAccumulator<vector<double> >("Greenfun_k0_tau_binned")
 #endif
 #ifdef CAN_WINDOW
     << alps::accumulators::LogBinningAccumulator<vector<double> >("Greenfun_p0_tau")
@@ -182,6 +184,11 @@ worm::worm(parameters_type const & parameters, std::size_t seed_offset) : alps::
   if (Nfreq > 0) {
     hist_grtau_re.assign((size_t)Nsites * Nfreq, 0.);
     hist_grtau_im.assign((size_t)Nsites * Nfreq, 0.);
+  }
+
+  Ntau_bins = parameters["Ntau_bins"].as<size_t>();
+  if (Ntau_bins > 0) {
+    hist_g0tau.assign(Ntau_bins, 0.);
   }
 #endif
 
@@ -377,6 +384,7 @@ void worm::measure() {
     for (size_t i=0; i < hist_densmat.size(); i++) hist_densmat[i] = 0;
     std::fill(hist_grtau_re.begin(), hist_grtau_re.end(), 0.);
     std::fill(hist_grtau_im.begin(), hist_grtau_im.end(), 0.);
+    std::fill(hist_g0tau.begin(), hist_g0tau.end(), 0.);
 #endif
 #ifdef CAN_WINDOW
     for (size_t i=0; i < hist_gt.size(); i++) hist_gt[i] = 0;
@@ -450,9 +458,11 @@ void worm::force_reset_statistics() {
     reset(measurements["Winding_number_squared"]);
     reset(measurements["Greenfun_k_omega_re"]);
     reset(measurements["Greenfun_k_omega_im"]);
+    reset(measurements["Greenfun_k0_tau_binned"]);
     for (size_t i=0; i < hist_densmat.size(); i++) hist_densmat[i] = 0;
     std::fill(hist_grtau_re.begin(), hist_grtau_re.end(), 0.);
     std::fill(hist_grtau_im.begin(), hist_grtau_im.end(), 0.);
+    std::fill(hist_g0tau.begin(), hist_g0tau.end(), 0.);
 #endif
 #ifdef CAN_WINDOW
     reset(measurements["Greenfun_p0_tau"]);
@@ -578,14 +588,26 @@ void worm::measure_corrfun() {
                                       hist_grtau_im[r*Nfreq + n]) * norm;
       fft2d(buf, Lx, Ly);
       for (size_t k = 0; k < (size_t)Nsites; k++) {
-        gk_re[k*Nfreq + n] = buf[k].real();
-        gk_im[k*Nfreq + n] = buf[k].imag();
+        gk_re[k*Nfreq + n] = buf[k].real() * Nsites;
+        gk_im[k*Nfreq + n] = buf[k].imag() * Nsites;
       }
     }
     std::fill(hist_grtau_re.begin(), hist_grtau_re.end(), 0.);
     std::fill(hist_grtau_im.begin(), hist_grtau_im.end(), 0.);
     measurements["Greenfun_k_omega_re"] << gk_re;
     measurements["Greenfun_k_omega_im"] << gk_im;
+  }
+
+  // Direct binned G(k=0, tau) diagnostic (bypasses the Fourier transform
+  // entirely -- sums over all r with equal weight, since e^{-i*0*r}=1).
+  if (Ntau_bins > 0) {
+    const double dtau_bin = beta / Ntau_bins;
+    vector<double> g0tau(Ntau_bins);
+    for (size_t i = 0; i < Ntau_bins; i++) {
+      g0tau[i] = hist_g0tau[i] * hist_dm_fac / Nmeasure2 / dtau_bin * Nsites;
+    }
+    std::fill(hist_g0tau.begin(), hist_g0tau.end(), 0.);
+    measurements["Greenfun_k0_tau_binned"] << g0tau;
   }
 #endif
 #ifdef CAN_WINDOW
@@ -638,15 +660,50 @@ void worm::measure_Gktau() {
   if (LATTICE::dim > 1 && !parameters["pbcy"]) return;
   // r = r_tail - r_head, consistent with measure_density_matrix convention
   size_t r = (size_t)MyLatt->relNumbering(worm_head_it->link(), worm_tail_it->link());
-  double dtau = worm_head_it->time() - worm_tail_it->time();
-  if (dtau < 0.) dtau += beta;
-  const double two_pi_over_beta = 2.0 * M_PI / beta;
   const double inv_Cworm = 1.0 / C_worm;
+
+
+  double fractpart, intpart;
+  double dt = Nprtcls/beta;
+  fractpart = modf(dt, &intpart);
+  //size_t index = static_cast<size_t>(fractpart * hist_gt.size());
+  //if (index >= hist_gt.size()) std::runtime_error("index in measure_gpt (gcan) is out of bounds ");
+  //hist_gt[index] += 1./(C_worm);
+  double dtau = fractpart * beta;
+
+  //double dtau = worm_head_it->time() - worm_tail_it->time();
+  //if (dtau < 0.) dtau += beta;
+  const double two_pi_over_beta = 2.0 * M_PI / beta;
   for (size_t n = 0; n < Nfreq; n++) {
     const double phase = two_pi_over_beta * n * dtau;
     hist_grtau_re[r * Nfreq + n] += std::cos(phase) * inv_Cworm;
     hist_grtau_im[r * Nfreq + n] += std::sin(phase) * inv_Cworm;
   }
+#endif
+}
+
+void worm::measure_G0tau() {
+#ifdef UNISYS
+  if (Ntau_bins == 0) return;
+  if (LATTICE::n_basis > 1) return;
+  if (!parameters["pbcx"]) return;
+  if (LATTICE::dim > 1 && !parameters["pbcy"]) return;
+  // Direct G(k=0,tau) estimator: sum over all r with equal weight (no
+  // phase factor, since k=0), no special-casing -- deliberately the
+  // simplest possible analog of measure_Gktau's per-step accumulation,
+  // to isolate whether a discrepancy lives in the tau-domain accumulation
+  // itself versus in the frequency-domain Fourier transform.
+  double fractpart, intpart;
+  double dt = Nprtcls/beta;
+  fractpart = modf(dt, &intpart);
+  size_t index = static_cast<size_t>(fractpart * hist_g0tau.size());
+  if (index >= hist_g0tau.size()) std::runtime_error("index in measure_gpt (gcan) is out of bounds ");
+  hist_g0tau[index] += 1./(C_worm);
+  //double dtau = worm_head_it->time() - worm_tail_it->time();
+  //if (dtau < 0.) dtau += beta;
+  //size_t bin = static_cast<size_t>(dtau / beta * Ntau_bins);
+  //if (bin >= Ntau_bins) bin = Ntau_bins - 1;
+  //hist_g0tau[bin] += 1.0 / C_worm;
 #endif
 }
 
