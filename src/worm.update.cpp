@@ -3,15 +3,23 @@
 
 
 void worm::update() {
-  
+
   do {
     double q = rnd(MyGenerator);
     int a = impossible;
+#ifdef DEBUGMODE
+    ++dbg_global_call_count;
+    unsigned long long& dbg_call_count = dbg_global_call_count;
+    const char* dbg_update_name = "NONE";
+#endif
     if (worm_diag) {
       if (q < update_prob_cuml[insertworm]) {
         a = INSERTWORM();
         update_statistics[statistics_tag::total_attempted][update_tag::insertworm] += 1.;
         update_statistics[a][update_tag::insertworm] += 1.;
+#ifdef DEBUGMODE
+        dbg_update_name = "INSERTWORM";
+#endif
       }
     }
     else {
@@ -19,21 +27,33 @@ void worm::update() {
         a = MOVEWORM();
         update_statistics[statistics_tag::total_attempted][update_tag::moveworm] += 1.;
         update_statistics[a][update_tag::moveworm] += 1.;
+#ifdef DEBUGMODE
+        dbg_update_name = "MOVEWORM";
+#endif
       }
       else if (q < update_prob_cuml[insertkink]) {
         a = INSERTKINK();
         update_statistics[statistics_tag::total_attempted][update_tag::insertkink] += 1.;
         update_statistics[a][update_tag::insertkink] += 1.;
+#ifdef DEBUGMODE
+        dbg_update_name = "INSERTKINK";
+#endif
       }
       else if (q < update_prob_cuml[deletekink]) {
         a = DELETEKINK();
         update_statistics[statistics_tag::total_attempted][update_tag::deletekink] += 1.;
         update_statistics[a][update_tag::deletekink] += 1.;
+#ifdef DEBUGMODE
+        dbg_update_name = "DELETEKINK";
+#endif
       }
       else if (q < update_prob_cuml[glueworm]) {
         a = GLUEWORM();
         update_statistics[statistics_tag::total_attempted][update_tag::glueworm] += 1.;
         update_statistics[a][update_tag::glueworm] += 1.;
+#ifdef DEBUGMODE
+        dbg_update_name = "GLUEWORM";
+#endif
       }
       //std::cout << "return value : " << a << "\n";
     }
@@ -43,6 +63,9 @@ void worm::update() {
       test_conf();
     }
     catch (const exception& e) {
+      cerr << "# DEBUG: call #" << dbg_call_count << " update=" << dbg_update_name
+           << " return_code=" << a << " worm_diag=" << worm_diag
+           << " worm_at_stop=" << worm_at_stop << " worm_meas_densmat=" << worm_meas_densmat << "\n";
       cerr << e.what() << endl;
       print_conf(std::cout);
       exit(1);
@@ -57,10 +80,15 @@ void worm::update() {
     else {
       mG += 1.;
 #ifdef UNISYS
-      if (worm_meas_densmat) measure_density_matrix();
+      if (sweeps >= thermalization_sweeps) {
+        if (worm_meas_densmat) measure_density_matrix();
+#ifdef MATSUBARA_MEAS
+        if (worm_at_stop == 0) {
+          measure_Gktau();
+          measure_G0tau();
+        }
 #endif
-#ifdef CAN_WINDOW
-   if (worm_at_stop == 0) measure_Gpt();
+      }
 #endif
     }
   } while (!worm_diag);

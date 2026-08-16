@@ -17,6 +17,7 @@
 
 #include <random>
 #include <vector>
+#include <complex>
 #include <list>
 #include <numeric>
 #include <time.h>
@@ -181,10 +182,11 @@ public :
 
   void measure_density_matrix();
   void update_hist();
-#ifdef CAN_WINDOW
-  void measure_Gpt();
+#ifdef MATSUBARA_MEAS
+  void measure_Gktau();
+  void measure_G0tau();
 #endif
-  
+
 protected:
   unsigned long sweeps;
   unsigned long thermalization_sweeps;
@@ -239,6 +241,9 @@ private :
   bool worm_meas_densmat;
   double worm_dtime;
   bool new_measurement;
+public:
+  unsigned long long dbg_global_call_count = 0;
+private:
   
   void find_assoc_insert(const SiteIndex, Diagram_type::iterator, const int );
   void find_assoc_delete(const SiteIndex, Diagram_type::iterator );
@@ -294,12 +299,17 @@ private :
   double hist_dm_fac;
 #ifdef UNISYS
   std::vector<double> hist_densmat;
+#ifdef MATSUBARA_MEAS
+  size_t Nfreq;
+  std::vector<double> hist_grtau_re;  // Nsites * Nfreq, indexed [r*Nfreq + n]
+  std::vector<double> hist_grtau_im;
+  size_t Ntau_bins;
+  std::vector<double> hist_g0tau;     // Ntau_bins, direct binned G(k=0,tau) diagnostic
+#endif
 #endif
   std::vector<size_t> counter;
 #ifdef CAN_WINDOW
-  static constexpr size_t Ntimes_gt = 200;
   static constexpr double can_window = 0.1;  // fraction of the imaginary time above and below the worm tail in which the worm head can move
-  std::vector<double> hist_gt;
 #endif
   
   mt19937 MyGenerator;

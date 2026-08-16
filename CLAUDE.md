@@ -21,6 +21,7 @@ Key CMake flags (all optional):
 | `-DDEBUG=ON` | `OFF` | Enables `DEBUGMODE`: runs `test_conf()` after every update |
 | `-DUNIFORM=OFF` | `ON` | Uniform (`UNISYS`) vs site/bond-inhomogeneous parameters |
 | `-DCWINDOW=ON` | `OFF` | Canonical window for Green's function measurement |
+| `-DMATSUBARA=ON` | `OFF` | Enables `G(k,omega_n)` Matsubara and binned `G(k=0,tau)` measurement (`Nfreq`/`Ntau_bins` params); adds per-step measurement cost, off by default |
 
 This produces two executables: `qmc_worm` (single-core) and `qmc_worm_mpi` (MPI).
 
@@ -31,7 +32,9 @@ This produces two executables: `qmc_worm` (single-core) and `qmc_worm_mpi` (MPI)
 mpiexec -n 4 ./build/qmc_worm_mpi parameter_files/BoseHubbard.ini
 ```
 
-Resume from checkpoint: `./qmc_worm job.clone.h5`
+Resume from checkpoint: `./qmc_worm job.clone.h5` (add `--reset-statistics` to
+discard accumulated measurement statistics on resume while keeping the
+restored configuration — see `docs/reset_statistics_on_restore.md`)
 
 Output is HDF5 (`job.out.h5`). Helper scripts in `tools/` extract results:
 

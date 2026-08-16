@@ -233,13 +233,13 @@ struct cubic : lattice<3,1> {
             throw std::runtime_error("PBC with linear length < 3 leads to double counting of bonds");
         generate_lattice([&](size_t bs) {return define_unitcell(bs);});
     }
-    
+
     void define_unitcell (size_t base) {
         auto mp = [](Base::DirectionIndex d, size_t site) {return std::make_pair(d, site);};
         NeighborType nb0 = {mp(0,next(0,base)),
-                            mp(3,previous(0,base)), 
-                            mp(1,next(1,base)), 
-                            mp(4,previous(1,base)), 
+                            mp(3,previous(0,base)),
+                            mp(1,next(1,base)),
+                            mp(4,previous(1,base)),
                             mp(2,next(2,base)),
                             mp(5,previous(2,base)),
                            };
@@ -275,7 +275,7 @@ struct square : lattice<2,1> {
             throw std::runtime_error("PBC with linear length < 3 leads to double counting of bonds");
         generate_lattice([&](size_t bs) {return define_unitcell(bs);});
     }
-    
+
     void define_unitcell (size_t base) {
         auto mp = [](Base::DirectionIndex d, size_t site) {return std::make_pair(d, site);};
         NeighborType nb0 = {mp(0,next(0,base)),

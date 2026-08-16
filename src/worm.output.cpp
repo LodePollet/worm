@@ -13,7 +13,7 @@ void worm::print_params(std::ostream& os) const {
 #endif
   Diagram_type::print_name(os);
   os << "# run time limit                                    : " << runtimelimit << "\n";
-  os << "# reset statistics when restored (requires hack)    : " << reset_statistics << "\n";
+  os << "# statistics were force-reset on restore             : " << reset_statistics << "\n";
   os << "# maximum number of sweeps                          : " << total_sweeps << "\n";
   os << "# maximum number of sweeps for thermalization       : " << thermalization_sweeps << "\n";
   os << "# inverse temperature                               : " << beta << "\n";
@@ -89,9 +89,25 @@ void worm::save(alps::hdf5::archive & ar) const {
   ar["checkpoint/configuration/state"] << state;
 #ifdef UNISYS
   ar["checkpoint/configuration/hist_densmat"] << hist_densmat;
+#ifdef MATSUBARA_MEAS
+  if (Nfreq > 0) {
+    ar["checkpoint/configuration/hist_grtau_re"] << hist_grtau_re;
+    ar["checkpoint/configuration/hist_grtau_im"] << hist_grtau_im;
+    // k-point and frequency metadata (deterministic, but stored for convenience)
+    const size_t Lx = MyLatt->get_Ls(0);
+    const size_t Ly = (LATTICE::dim > 1 ? MyLatt->get_Ls(1) : 1);
+    vector<double> kpoints(2 * (size_t)Nsites);
+    for (size_t r = 0; r < (size_t)Nsites; r++) {
+      kpoints[2*r]   = 2.0 * M_PI * (r % Lx) / Lx;
+      kpoints[2*r+1] = 2.0 * M_PI * (r / Lx) / Ly;
+    }
+    vector<double> freqs(Nfreq);
+    for (size_t n = 0; n < Nfreq; n++) freqs[n] = 2.0 * M_PI * n / beta;
+    ar["checkpoint/greenfun_kw/kpoints"] << kpoints;
+    ar["checkpoint/greenfun_kw/matsubara_freqs"] << freqs;
+    ar["checkpoint/greenfun_kw/flat_index_convention"] << std::string("k_idx * Nfreq + n");
+  }
 #endif
-#ifdef CAN_WINDOW
-  ar["checkpoint/configuration/hist_gt"] << hist_gt;
 #endif
 
 }
@@ -134,9 +150,12 @@ void worm::load(alps::hdf5::archive & ar) {
   ar["checkpoint/configuration/state"] >> state;
 #ifdef UNISYS
   ar["checkpoint/configuration/hist_densmat"] >> hist_densmat;
+#ifdef MATSUBARA_MEAS
+  if (Nfreq > 0) {
+    ar["checkpoint/configuration/hist_grtau_re"] >> hist_grtau_re;
+    ar["checkpoint/configuration/hist_grtau_im"] >> hist_grtau_im;
+  }
 #endif
-#ifdef CAN_WINDOW
-  ar["checkpoint/configuration/hist_gt"] >> hist_gt;
 #endif
 
   std::istringstream engine_ss(engine_str);
@@ -210,12 +229,15 @@ void worm::load(alps::hdf5::archive & ar) {
   std::cout << "...done.\n";
   cout << "# Potential Energy tot : " << Epot_tot << endl;
   std::cout << "\n# Finished loading.\n";
-  reset_statistics = parameters["reset_statistics"];
-  if (reset_statistics == 1) {
-    std::cout << "# Resetting statistics...\n";
-    force_reset_statistics();
-  }
-
+  // Statistics are NOT reset here: an alps::params value read at this
+  // point (post-restore) can never reflect anything other than what was
+  // already stored in the checkpoint itself, since define_parameters()
+  // (and therefore any CLI/INI override) is skipped whenever
+  // parameters.is_restored() is true -- this is exactly the situation
+  // load() is called in. See docs/reset_statistics_on_restore.md: the
+  // caller (worm.run.cpp / worm.run_mpi.cpp) checks a separate,
+  // manually-parsed --reset-statistics CLI flag and calls
+  // force_reset_statistics() explicitly after load() returns, if given.
 }
 
 void worm::print_conf(std::ostream& os) const {

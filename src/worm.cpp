@@ -20,7 +20,6 @@ void worm::define_parameters(parameters_type & parameters) {
     alps::define_convenience_parameters(parameters)
         .description(worm::code_name())
         .define<size_t>("runtimelimit",         60,      "run time limit in seconds")
-        .define<int>("reset_statistics",        0,       "force reset statistics when restoring from old configuration")
         .define<double>("beta",                 1.0,     "inverse temperature")
         .define<int>("sweeps",                  1000,    "maximum number of sweeps")
         .define<int>("thermalization",          200,     "number of sweeps for thermalization")
@@ -36,12 +35,18 @@ void worm::define_parameters(parameters_type & parameters) {
         .define<double>("p_moveworm",           0.3,      "update probability to move worm head around")
         .define<double>("p_insertkink",         0.2,      "update probability to insert kink at position of worm head")
         .define<double>("p_deletekink",         0.2,      "update probability tp remove kink at position of worm head")
-        .define<double>("p_glueworm",           0.3,      "update_probability to glue worm head and tail together and go back to diagonal configuration");
+        .define<double>("p_glueworm",           0.3,      "update_probability to glue worm head and tail together and go back to diagonal configuration")
+        .define<double>("dtol_scale",           1.0,      "multiplier applied to the automatically computed floating-point time tolerance dtol (increase to mitigate rare chronology round-off errors)");
 
   
   
   LATTICE::Base::define_parameters(parameters);
   model::define_parameters(parameters);
+
+#if defined(UNISYS) && defined(MATSUBARA_MEAS)
+  parameters.define<size_t>("Nfreq", 0, "number of non-negative bosonic Matsubara frequencies n for G(k,omega_n); 0 disables measurement");
+  parameters.define<size_t>("Ntau_bins", 0, "number of imaginary-time bins over [0,beta) for the direct binned G(k=0,tau) diagnostic; 0 disables measurement");
+#endif
 
   std::string ModelClassifierName = parameters["model"].as<std::string>();
   if ( ModelClassifierName == "BoseHubbard" ) {
@@ -66,7 +71,12 @@ worm::worm(parameters_type const & parameters, std::size_t seed_offset) : alps::
     , thermalization_sweeps(int(parameters["thermalization"]))
     , total_sweeps(parameters["sweeps"])
     , runtimelimit(parameters["runtimelimit"])
-    , reset_statistics(parameters["reset_statistics"])
+    , reset_statistics(0)  // set to 1 by force_reset_statistics(); see worm.run.cpp / worm.run_mpi.cpp
+                            // for the --reset-statistics CLI flag that triggers it on restore
+                            // (this can't be an alps::params-defined parameter: it must apply
+                            // when restoring from a checkpoint, which is exactly the case where
+                            // define_parameters()/CLI overrides don't take effect -- see
+                            // docs/reset_statistics_on_restore.md)
     , beta(parameters["beta"])
     , E_off(parameters["E_off"])
     , C_worm(parameters["C_worm"])
@@ -86,7 +96,7 @@ worm::worm(parameters_type const & parameters, std::size_t seed_offset) : alps::
   int beta_int = int(beta);
   int bin_digits = 0;
   for (; beta_int > 0; beta_int >>= 1) bin_digits++;
-  dtol = pow(2,-DBL_MANT_DIG+bin_digits);
+  dtol = pow(2,-DBL_MANT_DIG+bin_digits) * double(parameters["dtol_scale"]);
   //dtol = 1e-14;
   std::cout << "# dtol : " << dtol << "\n";
 
@@ -162,22 +172,29 @@ worm::worm(parameters_type const & parameters, std::size_t seed_offset) : alps::
     //<< alps::accumulators::LogBinningAccumulator<vector<double> >("Density_Matrix2")
     << alps::accumulators::LogBinningAccumulator<vector<double> >("DensDens_CorrFun")
     << alps::accumulators::LogBinningAccumulator<vector<double> >("Winding_number_squared")
+#ifdef MATSUBARA_MEAS
+    << alps::accumulators::LogBinningAccumulator<vector<double> >("Greenfun_k_omega_re")
+    << alps::accumulators::LogBinningAccumulator<vector<double> >("Greenfun_k_omega_im")
+    << alps::accumulators::LogBinningAccumulator<vector<double> >("Greenfun_k0_tau_binned")
 #endif
-#ifdef CAN_WINDOW
-    << alps::accumulators::LogBinningAccumulator<vector<double> >("Greenfun_p0_tau")
 #endif
   ;
 #ifdef UNISYS
   hist_densmat.resize(Nsites);
-  //hist_dd.resize(Nsites);
-  for (size_t i=0; i < hist_densmat.size(); i++) {
-    hist_densmat[i] = 0;
+  for (size_t i=0; i < hist_densmat.size(); i++) hist_densmat[i] = 0;
+
+#ifdef MATSUBARA_MEAS
+  Nfreq = parameters["Nfreq"].as<size_t>();
+  if (Nfreq > 0) {
+    hist_grtau_re.assign((size_t)Nsites * Nfreq, 0.);
+    hist_grtau_im.assign((size_t)Nsites * Nfreq, 0.);
+  }
+
+  Ntau_bins = parameters["Ntau_bins"].as<size_t>();
+  if (Ntau_bins > 0) {
+    hist_g0tau.assign(Ntau_bins, 0.);
   }
 #endif
-
-#ifdef CAN_WINDOW
-  hist_gt.resize(Ntimes_gt);	
-  for (size_t i=0; i < hist_gt.size(); i++) hist_gt[i] = 0;
 #endif
   
   
@@ -365,9 +382,11 @@ void worm::measure() {
   if (sweeps == thermalization_sweeps) {
 #ifdef UNISYS
     for (size_t i=0; i < hist_densmat.size(); i++) hist_densmat[i] = 0;
+#ifdef MATSUBARA_MEAS
+    std::fill(hist_grtau_re.begin(), hist_grtau_re.end(), 0.);
+    std::fill(hist_grtau_im.begin(), hist_grtau_im.end(), 0.);
+    std::fill(hist_g0tau.begin(), hist_g0tau.end(), 0.);
 #endif
-#ifdef CAN_WINDOW
-    for (size_t i=0; i < hist_gt.size(); i++) hist_gt[i] = 0;
 #endif
     return;
   }
@@ -415,8 +434,6 @@ void worm::measure() {
   }
 
   if (counter[counter_tag::WRITE] >= Nsave) {
-    //alps::hdf5::archive ar(parameters["outputfile"].as<std::string>(), "w");
-    //ar["samples/operator_string_" + to_string(counter[counter_tag::SAMPLE_NUM]++)] << serialize_op_string();
     save(parameters["checkpoint"]);
     counter[counter_tag::WRITE] = 0;
   }
@@ -436,20 +453,92 @@ void worm::force_reset_statistics() {
     //reset(measurements["Density_Matrix2"]);
     reset(measurements["DensDens_CorrFun"]);
     reset(measurements["Winding_number_squared"]);
-    for (size_t i=0; i < hist_densmat.size(); i++) {
-      hist_densmat[i] = 0;
-    }
+#ifdef MATSUBARA_MEAS
+    reset(measurements["Greenfun_k_omega_re"]);
+    reset(measurements["Greenfun_k_omega_im"]);
+    reset(measurements["Greenfun_k0_tau_binned"]);
+    std::fill(hist_grtau_re.begin(), hist_grtau_re.end(), 0.);
+    std::fill(hist_grtau_im.begin(), hist_grtau_im.end(), 0.);
+    std::fill(hist_g0tau.begin(), hist_g0tau.end(), 0.);
 #endif
-#ifdef CAN_WINDOW
-    reset(measurements["Greenfun_p0_tau"]);
-    for (size_t i=0; i < hist_gt.size(); i++) hist_gt[i] = 0;
-#endif 
+    for (size_t i=0; i < hist_densmat.size(); i++) hist_densmat[i] = 0;
+#endif
   }
   for (size_t i=0; i < statistics_tag::statistics_count; i++) {
     for (size_t j=0; j < update_tag::update_count; j++) update_statistics[i][j] = 0;
   }
   sweeps = thermalization_sweeps;
+  reset_statistics = 1;  // informational only, for print_params()
 }
+
+#if defined(UNISYS) && defined(MATSUBARA_MEAS)
+namespace {
+// Naive O(n^2) DFT (forward exponent: -2πi k n / N), used when n is not a
+// power of 2. Lattice sizes here are small (worm diagram cost dominates),
+// so the asymptotics don't matter.
+static void dft1d_naive(std::vector<std::complex<double>>& a) {
+    const int n = static_cast<int>(a.size());
+    std::vector<std::complex<double>> out(n, std::complex<double>(0.0, 0.0));
+    for (int k = 0; k < n; k++) {
+        const double ang = -2.0 * M_PI * k / n;
+        const std::complex<double> wk(std::cos(ang), std::sin(ang));
+        std::complex<double> w(1.0, 0.0);
+        for (int j = 0; j < n; j++) {
+            out[k] += a[j] * w;
+            w *= wk;
+        }
+    }
+    a.swap(out);
+}
+
+// In-place radix-2 Cooley-Tukey DIT FFT (forward exponent: -2πi k n / N).
+// Requires a.size() to be a power of 2; falls back to dft1d_naive otherwise.
+static void fft1d(std::vector<std::complex<double>>& a) {
+    const int n = static_cast<int>(a.size());
+    if (n & (n - 1)) {
+        dft1d_naive(a);
+        return;
+    }
+    for (int i = 1, j = 0; i < n; i++) {
+        int bit = n >> 1;
+        for (; j & bit; bit >>= 1) j ^= bit;
+        j ^= bit;
+        if (i < j) std::swap(a[i], a[j]);
+    }
+    for (int len = 2; len <= n; len <<= 1) {
+        const double ang = -2.0 * M_PI / len;
+        const std::complex<double> wlen(std::cos(ang), std::sin(ang));
+        for (int i = 0; i < n; i += len) {
+            std::complex<double> w(1.0, 0.0);
+            for (int j = 0; j < len / 2; j++) {
+                std::complex<double> u = a[i + j], v = a[i + j + len/2] * w;
+                a[i + j]         = u + v;
+                a[i + j + len/2] = u - v;
+                w *= wlen;
+            }
+        }
+    }
+}
+
+// Separable 2D FFT, data in row-major order (outer index = y, inner = x).
+static void fft2d(std::vector<std::complex<double>>& data, size_t Lx, size_t Ly) {
+    std::vector<std::complex<double>> buf;
+    buf.reserve(std::max(Lx, Ly));
+    buf.resize(Lx);
+    for (size_t y = 0; y < Ly; y++) {
+        for (size_t x = 0; x < Lx; x++) buf[x] = data[y * Lx + x];
+        fft1d(buf);
+        for (size_t x = 0; x < Lx; x++) data[y * Lx + x] = buf[x];
+    }
+    buf.resize(Ly);
+    for (size_t x = 0; x < Lx; x++) {
+        for (size_t y = 0; y < Ly; y++) buf[y] = data[y * Lx + x];
+        fft1d(buf);
+        for (size_t y = 0; y < Ly; y++) data[y * Lx + x] = buf[y];
+    }
+}
+} // anonymous namespace
+#endif
 
 void worm::measure_corrfun() {
 #ifdef UNISYS
@@ -479,18 +568,45 @@ void worm::measure_corrfun() {
   measurements["Density_Matrix"] << hist_dm;
   //measurements["Density_Matrix2"] << hist_dm2;
   measurements["DensDens_CorrFun"] << hist_dd;
-  for (size_t i=0; i < hist_densmat.size(); i++) {
-    hist_densmat[i] = 0;
+  for (size_t i=0; i < hist_densmat.size(); i++) hist_densmat[i] = 0;
+
+#ifdef MATSUBARA_MEAS
+  // G(k, omega_n) Matsubara measurement
+  if (Nfreq > 0) {
+    const size_t Lx = MyLatt->get_Ls(0);
+    const size_t Ly = (LATTICE::dim > 1 ? MyLatt->get_Ls(1) : 1);
+    const double norm = hist_dm_fac / Nmeasure2;
+    vector<double> gk_re((size_t)Nsites * Nfreq);
+    vector<double> gk_im((size_t)Nsites * Nfreq);
+    std::vector<std::complex<double>> buf((size_t)Nsites);
+    for (size_t n = 0; n < Nfreq; n++) {
+      for (size_t r = 0; r < (size_t)Nsites; r++)
+        buf[r] = std::complex<double>(hist_grtau_re[r*Nfreq + n],
+                                      hist_grtau_im[r*Nfreq + n]) * norm;
+      fft2d(buf, Lx, Ly);
+      for (size_t k = 0; k < (size_t)Nsites; k++) {
+        gk_re[k*Nfreq + n] = buf[k].real() * Nsites;
+        gk_im[k*Nfreq + n] = buf[k].imag() * Nsites;
+      }
+    }
+    std::fill(hist_grtau_re.begin(), hist_grtau_re.end(), 0.);
+    std::fill(hist_grtau_im.begin(), hist_grtau_im.end(), 0.);
+    measurements["Greenfun_k_omega_re"] << gk_re;
+    measurements["Greenfun_k_omega_im"] << gk_im;
+  }
+
+  // Direct binned G(k=0, tau) diagnostic (bypasses the Fourier transform
+  // entirely -- sums over all r with equal weight, since e^{-i*0*r}=1).
+  if (Ntau_bins > 0) {
+    const double dtau_bin = beta / Ntau_bins;
+    vector<double> g0tau(Ntau_bins);
+    for (size_t i = 0; i < Ntau_bins; i++) {
+      g0tau[i] = hist_g0tau[i] * hist_dm_fac / Nmeasure2 / dtau_bin * Nsites;
+    }
+    std::fill(hist_g0tau.begin(), hist_g0tau.end(), 0.);
+    measurements["Greenfun_k0_tau_binned"] << g0tau;
   }
 #endif
-#ifdef CAN_WINDOW
-  vector<double> hist_gft(hist_gt.size());
-  double dtau = (2 * can_window * beta) / hist_gt.size();
-  for (size_t i=0; i < hist_gft.size(); i++) {
-    hist_gft[i] = hist_gt[i] * hist_dm_fac / Nmeasure2 / dtau;
-    hist_gt[i] = 0;
-  }
-  measurements["Greenfun_p0_tau"] << hist_gft;
 #endif
 }
 
@@ -525,16 +641,50 @@ void worm::measure_density_matrix() {
 #endif
 }
 
-#ifdef CAN_WINDOW
-void worm::measure_Gpt() {
-  double dt = Nprtcls/beta - canonical;
-  if (( dt < -can_window) || (dt > can_window)) {
-    cerr << "# dt is out of bounds in measure_gpt " << dt << "\t" << Nprtcls << "\n";
-    exit(1);
+#ifdef MATSUBARA_MEAS
+void worm::measure_Gktau() {
+#ifdef UNISYS
+  if (Nfreq == 0) return;
+  if (LATTICE::n_basis > 1) return;
+  if (!parameters["pbcx"]) return;
+  if (LATTICE::dim > 1 && !parameters["pbcy"]) return;
+  // r = r_tail - r_head, consistent with measure_density_matrix convention
+  size_t r = (size_t)MyLatt->relNumbering(worm_head_it->link(), worm_tail_it->link());
+  const double inv_Cworm = 1.0 / C_worm;
+
+
+  double fractpart, intpart;
+  double dt = Nprtcls/beta;
+  fractpart = modf(dt, &intpart);
+  double dtau = fractpart * beta;
+
+  const double two_pi_over_beta = 2.0 * M_PI / beta;
+  for (size_t n = 0; n < Nfreq; n++) {
+    const double phase = two_pi_over_beta * n * dtau;
+    hist_grtau_re[r * Nfreq + n] += std::cos(phase) * inv_Cworm;
+    hist_grtau_im[r * Nfreq + n] += std::sin(phase) * inv_Cworm;
   }
-  size_t index = static_cast<size_t>((can_window + dt) / (can_window * 2) * hist_gt.size());
-  if (index >= hist_gt.size()) throw std::runtime_error("index in measure_gpt is out of bounds ");
-  hist_gt[index] += 1./(C_worm);
+#endif
+}
+
+void worm::measure_G0tau() {
+#ifdef UNISYS
+  if (Ntau_bins == 0) return;
+  if (LATTICE::n_basis > 1) return;
+  if (!parameters["pbcx"]) return;
+  if (LATTICE::dim > 1 && !parameters["pbcy"]) return;
+  // Direct G(k=0,tau) estimator: sum over all r with equal weight (no
+  // phase factor, since k=0), no special-casing -- deliberately the
+  // simplest possible analog of measure_Gktau's per-step accumulation,
+  // to isolate whether a discrepancy lives in the tau-domain accumulation
+  // itself versus in the frequency-domain Fourier transform.
+  double fractpart, intpart;
+  double dt = Nprtcls/beta;
+  fractpart = modf(dt, &intpart);
+  size_t index = static_cast<size_t>(fractpart * hist_g0tau.size());
+  if (index >= hist_g0tau.size()) throw std::runtime_error("index in measure_G0tau is out of bounds ");
+  hist_g0tau[index] += 1./(C_worm);
+#endif
 }
 #endif
 
@@ -605,8 +755,21 @@ void worm::test_conf() {
           }
           for (size_t const& k : zc[i]) {
             if ( (k > j) &&  (it->get_assoc(j)->color() > 0) && (it->get_assoc(k)->color() > 0) && (!is_not_close(it->get_assoc(j)->time(), it->get_assoc(k)->time(),dtol*2))) {
-              cerr << "#\n# TEST_CONF : error in chronology, two interactions at exactly the same time on site " << i<< " links : " << j << " " << k << "\t times : " << it->get_assoc(j)->time() << "\t" << it->get_assoc(k)->time() << "\n";
-              throw exception();
+              // Not necessarily corruption: if nb[i][j] and nb[i][k] are
+              // themselves bonded to each other (possible on lattices with
+              // a periodic ring of length 3, where any two neighbors of a
+              // site are also neighbors of each other), then assoc(j) and
+              // assoc(k) can legitimately be the two mirror halves of the
+              // SAME kink on that j-k bond, recorded once on each endpoint
+              // -- not two independent interactions coincidentally at the
+              // same time. Only flag it if that is not the case.
+              bool legitimate_shared_event =
+                  (it->get_assoc(j)->link() == (int)nb[i][k]) &&
+                  (it->get_assoc(k)->link() == (int)nb[i][j]);
+              if (!legitimate_shared_event) {
+                cerr << "#\n# TEST_CONF : error in chronology, two interactions at exactly the same time on site " << i<< " links : " << j << " " << k << "\t times : " << it->get_assoc(j)->time() << "\t" << it->get_assoc(k)->time() << "\n";
+                throw exception();
+              }
             }
           }
         }
@@ -790,7 +953,7 @@ void worm::find_assoc_insert(const SiteIndex cursite, Diagram_type::iterator  it
   // it is the iterator to the newly insterted element
   // memory for its associations has been allocated already but the associations must be set correctly here
   // and we need to check on the neighbors if their associations need to be changed
-  
+
   // part 1 : iterators for the new element located on site cursite
   //std::cout<< "# Welcome to find_assoc_insert " << cursite << "\t" << *it << "\n";
   // we go one element up where we by assumption have a properly associated element
@@ -798,10 +961,14 @@ void worm::find_assoc_insert(const SiteIndex cursite, Diagram_type::iterator  it
   ito= it;
   ++ito;
   if (ito == operator_string[cursite].end()) ito = operator_string[cursite].begin();
-  
+
   double t0 = it->time();
   it->time( t0 + shift * dtol*2);
- 
+
+#if defined(DEBUGMODE) && defined(FAI_TRACE)
+  bool trace = (dbg_global_call_count >= 940 && dbg_global_call_count <= 960);
+#endif
+
   for (size_t j = 0; j < zcmax; ++j) {
     SiteIndex s = nb[cursite][j];
     if (s == -1) {
@@ -813,15 +980,33 @@ void worm::find_assoc_insert(const SiteIndex cursite, Diagram_type::iterator  it
     if (itp == operator_string[s].begin()) itp = operator_string[s].end();
     --itp;
     it->set_assoc(j, itl);
+#if defined(DEBUGMODE) && defined(FAI_TRACE)
+    if (trace)
+      std::cerr << "# FAI1 cursite=" << cursite << " j=" << j << " s=" << s
+                 << " it_time=" << it->time() << " ito(site,time,color)=(" << cursite << "," << ito->time() << "," << ito->color() << ")"
+                 << " itl(time,color)=(" << itl->time() << "," << itl->color() << ")"
+                 << " itp(time,color)=(" << itp->time() << "," << itp->color() << ")\n";
+#endif
     while (!t_between(it->time(), itp->time(), itl->time())) {
       itl = itp;
       if (itp == operator_string[s].begin()) itp = operator_string[s].end();
       --itp;
       it->set_assoc(j, itl);
+#if defined(DEBUGMODE) && defined(FAI_TRACE)
+      if (trace)
+        std::cerr << "# FAI1-loop cursite=" << cursite << " j=" << j
+                   << " itl(time,color)=(" << itl->time() << "," << itl->color() << ")"
+                   << " itp(time,color)=(" << itp->time() << "," << itp->color() << ")\n";
+#endif
     }
+#if defined(DEBUGMODE) && defined(FAI_TRACE)
+    if (trace)
+      std::cerr << "# FAI1-result cursite=" << cursite << " j=" << j << " -> assoc(time,color)=("
+                 << it->get_assoc(j)->time() << "," << it->get_assoc(j)->color() << ")\n";
+#endif
   }
-  
-  
+
+
   // part 2 : iterators on the neighbors might have to be set newly in the "opposite" direction
   for (size_t const& j : zc[cursite]) {
     SiteIndex s = nb[cursite][j];
@@ -834,16 +1019,37 @@ void worm::find_assoc_insert(const SiteIndex cursite, Diagram_type::iterator  it
     if (itl->time() == it->time()) {
       itl->set_assoc(oppdir, it);
     }
+#if defined(DEBUGMODE) && defined(FAI_TRACE)
+    if (trace)
+      std::cerr << "# FAI2 cursite=" << cursite << " j=" << j << " s=" << s << " oppdir=" << oppdir
+                 << " it_time=" << it->time()
+                 << " itl(time,color)=(" << itl->time() << "," << itl->color() << ")"
+                 << " itp(site,time,color)=(" << s << "," << itp->time() << "," << itp->color() << ")"
+                 << " itw(time,color)=(" << itw->time() << "," << itw->color() << ")\n";
+#endif
     while ((itp->time() != itw->time())  && ( t_between(it->time(), itp->time(), itw->time()) )) {
       itp->set_assoc(oppdir, it);
+#if defined(DEBUGMODE) && defined(FAI_TRACE)
+      if (trace)
+        std::cerr << "# FAI2-set cursite=" << cursite << " j=" << j << " s=" << s
+                   << " itp_now_points(oppdir=" << oppdir << ") to it(time=" << it->time() << ")"
+                   << " -- itp(site,time,color)=(" << s << "," << itp->time() << "," << itp->color() << ")\n";
+#endif
       if (itp == operator_string[s].begin()) itp = operator_string[s].end();
       --itp;
       itw = itp->get_assoc(oppdir);
+#if defined(DEBUGMODE) && defined(FAI_TRACE)
+      if (trace)
+        std::cerr << "# FAI2-loop cursite=" << cursite << " j=" << j << " s=" << s
+                   << " itp(time,color)=(" << itp->time() << "," << itp->color() << ")"
+                   << " itw(time,color)=(" << itw->time() << "," << itw->color() << ")\n";
+#endif
     }
   }
-  
+
   it->time(t0);
 }
+
 
 
 
