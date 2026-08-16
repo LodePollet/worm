@@ -20,7 +20,6 @@ void worm::define_parameters(parameters_type & parameters) {
     alps::define_convenience_parameters(parameters)
         .description(worm::code_name())
         .define<size_t>("runtimelimit",         60,      "run time limit in seconds")
-        .define<int>("reset_statistics",        0,       "force reset statistics when restoring from old configuration")
         .define<double>("beta",                 1.0,     "inverse temperature")
         .define<int>("sweeps",                  1000,    "maximum number of sweeps")
         .define<int>("thermalization",          200,     "number of sweeps for thermalization")
@@ -72,7 +71,12 @@ worm::worm(parameters_type const & parameters, std::size_t seed_offset) : alps::
     , thermalization_sweeps(int(parameters["thermalization"]))
     , total_sweeps(parameters["sweeps"])
     , runtimelimit(parameters["runtimelimit"])
-    , reset_statistics(parameters["reset_statistics"])
+    , reset_statistics(0)  // set to 1 by force_reset_statistics(); see worm.run.cpp / worm.run_mpi.cpp
+                            // for the --reset-statistics CLI flag that triggers it on restore
+                            // (this can't be an alps::params-defined parameter: it must apply
+                            // when restoring from a checkpoint, which is exactly the case where
+                            // define_parameters()/CLI overrides don't take effect -- see
+                            // docs/reset_statistics_on_restore.md)
     , beta(parameters["beta"])
     , E_off(parameters["E_off"])
     , C_worm(parameters["C_worm"])
@@ -464,6 +468,7 @@ void worm::force_reset_statistics() {
     for (size_t j=0; j < update_tag::update_count; j++) update_statistics[i][j] = 0;
   }
   sweeps = thermalization_sweeps;
+  reset_statistics = 1;  // informational only, for print_params()
 }
 
 #if defined(UNISYS) && defined(MATSUBARA_MEAS)

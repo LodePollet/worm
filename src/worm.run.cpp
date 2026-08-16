@@ -2,9 +2,19 @@
 #include "copyright.hpp"
 #include <iostream>
 #include <stdexcept>
+#include <algorithm>
 
 int main(int argc, char** argv) {
     try {
+        // Checked manually, independent of alps::params: when restoring
+        // from a checkpoint, define_parameters() (and therefore any
+        // CLI/INI override of an alps::params-defined parameter) never
+        // runs, so "force reset statistics on restore" cannot be an
+        // ordinary --key=value parameter. See
+        // docs/reset_statistics_on_restore.md.
+        bool reset_statistics_flag = std::any_of(argv + 1, argv + argc,
+            [](const char* a) { return std::string(a) == "--reset-statistics"; });
+
         std::cout << "# " << worm::code_name() << std::endl;
         print_copyright(std::cout);
 
@@ -31,6 +41,10 @@ int main(int argc, char** argv) {
             std::cout << "# Restoring checkpoint from " << checkpoint_file << std::endl;
             try {
                 sim.load(checkpoint_file);
+                if (reset_statistics_flag) {
+                    std::cout << "# --reset-statistics given: resetting statistics" << std::endl;
+                    sim.force_reset_statistics();
+                }
             }
             catch (const std::exception& e) {
                 std::cerr << "# ERROR restoring checkpoint: " << e.what() << std::endl;

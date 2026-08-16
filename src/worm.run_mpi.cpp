@@ -2,6 +2,7 @@
 #include "copyright.hpp"
 #include <iostream>
 #include <stdexcept>
+#include <algorithm>
 #include <alps/mc/mpiadapter.hpp>
 
 int main(int argc, char** argv) {
@@ -11,6 +12,14 @@ int main(int argc, char** argv) {
     const bool is_master = (rank == 0);
 
     try {
+        // Checked manually, independent of alps::params: when restoring
+        // from a checkpoint, define_parameters() (and therefore any
+        // CLI/INI override of an alps::params-defined parameter) never
+        // runs, so "force reset statistics on restore" cannot be an
+        // ordinary --key=value parameter. See
+        // docs/reset_statistics_on_restore.md.
+        bool reset_statistics_flag = std::any_of(argv + 1, argv + argc,
+            [](const char* a) { return std::string(a) == "--reset-statistics"; });
         if (is_master) {
             std::cout << "# " << worm::code_name() << std::endl;
             print_copyright(std::cout);
@@ -41,9 +50,13 @@ int main(int argc, char** argv) {
                       << " on rank " << rank << std::endl;
             try {
                 sim.load(checkpoint_file);
+                if (reset_statistics_flag) {
+                    if (is_master) std::cout << "# --reset-statistics given: resetting statistics" << std::endl;
+                    sim.force_reset_statistics();
+                }
             }
             catch (const std::exception& e) {
-                std::cerr << "# ERROR on rank " << rank << " loading checkpoint: " 
+                std::cerr << "# ERROR on rank " << rank << " loading checkpoint: "
                           << e.what() << std::endl;
                 env.abort(1);
             }

@@ -13,7 +13,7 @@ void worm::print_params(std::ostream& os) const {
 #endif
   Diagram_type::print_name(os);
   os << "# run time limit                                    : " << runtimelimit << "\n";
-  os << "# reset statistics when restored (requires hack)    : " << reset_statistics << "\n";
+  os << "# statistics were force-reset on restore             : " << reset_statistics << "\n";
   os << "# maximum number of sweeps                          : " << total_sweeps << "\n";
   os << "# maximum number of sweeps for thermalization       : " << thermalization_sweeps << "\n";
   os << "# inverse temperature                               : " << beta << "\n";
@@ -229,12 +229,15 @@ void worm::load(alps::hdf5::archive & ar) {
   std::cout << "...done.\n";
   cout << "# Potential Energy tot : " << Epot_tot << endl;
   std::cout << "\n# Finished loading.\n";
-  reset_statistics = parameters["reset_statistics"];
-  if (reset_statistics == 1) {
-    std::cout << "# Resetting statistics...\n";
-    force_reset_statistics();
-  }
-
+  // Statistics are NOT reset here: an alps::params value read at this
+  // point (post-restore) can never reflect anything other than what was
+  // already stored in the checkpoint itself, since define_parameters()
+  // (and therefore any CLI/INI override) is skipped whenever
+  // parameters.is_restored() is true -- this is exactly the situation
+  // load() is called in. See docs/reset_statistics_on_restore.md: the
+  // caller (worm.run.cpp / worm.run_mpi.cpp) checks a separate,
+  // manually-parsed --reset-statistics CLI flag and calls
+  // force_reset_statistics() explicitly after load() returns, if given.
 }
 
 void worm::print_conf(std::ostream& os) const {

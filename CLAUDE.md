@@ -32,7 +32,9 @@ This produces two executables: `qmc_worm` (single-core) and `qmc_worm_mpi` (MPI)
 mpiexec -n 4 ./build/qmc_worm_mpi parameter_files/BoseHubbard.ini
 ```
 
-Resume from checkpoint: `./qmc_worm job.clone.h5`
+Resume from checkpoint: `./qmc_worm job.clone.h5` (add `--reset-statistics` to
+discard accumulated measurement statistics on resume while keeping the
+restored configuration — see `docs/reset_statistics_on_restore.md`)
 
 Output is HDF5 (`job.out.h5`). Helper scripts in `tools/` extract results:
 
