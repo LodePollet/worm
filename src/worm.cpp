@@ -787,8 +787,21 @@ void worm::test_conf() {
           }
           for (size_t const& k : zc[i]) {
             if ( (k > j) &&  (it->get_assoc(j)->color() > 0) && (it->get_assoc(k)->color() > 0) && (!is_not_close(it->get_assoc(j)->time(), it->get_assoc(k)->time(),dtol*2))) {
-              cerr << "#\n# TEST_CONF : error in chronology, two interactions at exactly the same time on site " << i<< " links : " << j << " " << k << "\t times : " << it->get_assoc(j)->time() << "\t" << it->get_assoc(k)->time() << "\n";
-              throw exception();
+              // Not necessarily corruption: if nb[i][j] and nb[i][k] are
+              // themselves bonded to each other (possible on lattices with
+              // a periodic ring of length 3, where any two neighbors of a
+              // site are also neighbors of each other), then assoc(j) and
+              // assoc(k) can legitimately be the two mirror halves of the
+              // SAME kink on that j-k bond, recorded once on each endpoint
+              // -- not two independent interactions coincidentally at the
+              // same time. Only flag it if that is not the case.
+              bool legitimate_shared_event =
+                  (it->get_assoc(j)->link() == (int)nb[i][k]) &&
+                  (it->get_assoc(k)->link() == (int)nb[i][j]);
+              if (!legitimate_shared_event) {
+                cerr << "#\n# TEST_CONF : error in chronology, two interactions at exactly the same time on site " << i<< " links : " << j << " " << k << "\t times : " << it->get_assoc(j)->time() << "\t" << it->get_assoc(k)->time() << "\n";
+                throw exception();
+              }
             }
           }
         }
