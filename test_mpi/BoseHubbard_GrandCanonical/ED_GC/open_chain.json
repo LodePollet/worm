@@ -1,0 +1,21 @@
+{
+	"Etot"      : -2.340740,
+	"lattice"   : "chain",
+	"zc"        : 2,
+	"pbc"       : 0,
+	"Nx"        : 4,
+	"Ny"        : 1,
+	"Nz"        : 1,
+	"t_hop"     : -0.3,
+	"V_nn"      : 0,
+	"U_on"      : 1,
+	"mu"        : 0.5,
+	"nmax"      : 3,
+	"nmin"      : 0,
+	"beta"      : 2,
+	"Epot"      : 1.665159,
+	"Epot_gc"   : -0.792633,
+	"Ekin"      : -1.548107,
+	"N"         : 4.915584,
+	"source"    : "full diagonalization of the 256 grand-canonical states (ALPSim/ALPS#295)"
+}

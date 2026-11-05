@@ -51,6 +51,13 @@ endif()
 add_compile_definitions(LATTICE=${LATTICE})
 
 
+# serial program, run by test_serial.sh
+add_executable(${PROJECT_NAME}
+  ../../src/worm.run.cpp
+  ../../src/worm.cpp
+  ../../src/worm.update.cpp
+  ../../src/worm.output.cpp)
+
 add_executable(${PROJECT_NAME}_mpi
   ../../src/worm.run_mpi.cpp
   ../../src/worm.cpp
@@ -71,4 +78,5 @@ else()
 endif()
 # Use ALPSCore_LIBRARIES variable to link to ALPSCore 
 
+target_link_libraries(${PROJECT_NAME} ${ALPSCore_LIBRARIES})
 target_link_libraries(${PROJECT_NAME}_mpi ${ALPSCore_LIBRARIES})

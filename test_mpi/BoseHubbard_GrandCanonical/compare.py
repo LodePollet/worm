@@ -90,6 +90,16 @@ if close_enough(Etot_ed, Etot, Etoterr):
 
 
 
+print("Number of particles")
+try: #might not exist in edOut (json file)
+	N_ed = float(edOut['N'])
+	N = np.array(h5res['Number_of_particles']['mean']['value'])
+	Nerr = np.array(h5res['Number_of_particles']['mean']['error'])
+	if close_enough(N_ed, N, Nerr):
+		print("N success")
+except KeyError:
+	print("skip")
+
 print()
 print("done")
 

@@ -689,7 +689,10 @@ int worm::DELETEKINK() {
   double weight_new = MyModel->site_weight_offdiag(adj_site, n_B_link, n_A_link);
 #endif
     
-  double ratio = weight_new / weight_old * update_prob[insertkink] / (update_prob[deletekink] * 2* zc[isite].size());
+  // The reverse move is an INSERTKINK from adj_site, where the worm head
+  // lands, which picks this bond with probability 1/zc[adj_site]; with open
+  // boundaries or mixed coordination zc[adj_site] != zc[isite].
+  double ratio = weight_new / weight_old * update_prob[insertkink] / (update_prob[deletekink] * 2* zc[adj_site].size());
   
   
 #ifdef DEBUGMODE
